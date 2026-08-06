@@ -10,6 +10,7 @@ import { safeText, toText } from "@/shared/utils/eventUtils";
 import { applyTaskBindingToNode } from "@/features/events/lib/processors/eventProcessorShared";
 import { t } from "@/shared/i18n";
 import { formatPlatformErrorForDisplay } from "@/shared/data/errors/platformError";
+import { buildNextTaskItem } from "@/features/tasks/lib/taskRuntime";
 
 export function processRunEvent(
   event: AgentEvent,
@@ -141,6 +142,50 @@ export function processRunEvent(
         errorDetail: display.error,
         ts: timestamp,
       });
+    }
+
+    const taskStatus =
+      type === "run.complete"
+        ? "completed"
+        : type === "run.cancel"
+          ? "canceled"
+          : "failed";
+    const eventRunId = toText(event.runId).trim();
+    const terminalTaskIds = state.getActiveTaskIds().filter((taskId) => {
+      const taskRunId = toText(state.getTaskItem(taskId)?.runId).trim();
+      return !eventRunId || !taskRunId || taskRunId === eventRunId;
+    });
+
+    for (const taskId of terminalTaskIds) {
+      const existing = state.getTaskItem(taskId);
+      const groupId = existing?.taskGroupId || `task_group_${taskId}`;
+      const task = buildNextTaskItem({
+        event: { ...event, taskId },
+        state,
+        taskId,
+        status: taskStatus,
+        updatedAt: timestamp,
+        existing,
+        groupId,
+      });
+      commands.push({ cmd: "SET_TASK_ITEM_META", taskId, task });
+      commands.push({ cmd: "REMOVE_ACTIVE_TASK_ID", taskId });
+      commands.push({
+        cmd: "SET_PLAN_RUNTIME",
+        taskId,
+        runtime: {
+          status: taskStatus,
+          updatedAt: timestamp,
+          error: taskStatus === "failed" ? toText(event.error) : "",
+        },
+      });
+      commands.push({ cmd: "SET_PLAN_LAST_TOUCHED_TASK_ID", taskId });
+    }
+    if (
+      state.currentRunningPlanTaskId &&
+      terminalTaskIds.includes(state.currentRunningPlanTaskId)
+    ) {
+      commands.push({ cmd: "SET_PLAN_CURRENT_RUNNING_TASK_ID", taskId: "" });
     }
     return commands;
   }

@@ -1220,6 +1220,40 @@ describe('processStreamEvent', () => {
     expect(state.planCurrentRunningTaskId).toBe('');
   });
 
+  it('settles the last running plan task when the run completes without task.complete', () => {
+    const state = createState();
+
+    processAndApply(state, {
+      type: 'plan.update',
+      planId: 'plan_1',
+      plan: [{ taskId: 'task_1', description: '最后一项' }],
+    }, 'live', true);
+    processAndApply(state, {
+      type: 'run.start',
+      runId: 'run_1',
+      timestamp: 100,
+    }, 'live', true);
+    processAndApply(state, {
+      type: 'task.start',
+      taskId: 'task_1',
+      runId: 'run_1',
+      timestamp: 100,
+    }, 'live', true);
+    processAndApply(state, {
+      type: 'run.complete',
+      runId: 'run_1',
+      timestamp: 250,
+    }, 'live', true);
+
+    expect(state.taskItemsById.get('task_1')).toMatchObject({
+      status: 'completed',
+      endedAt: 250,
+      durationMs: 150,
+    });
+    expect(state.planRuntimeByTaskId.get('task_1')?.status).toBe('completed');
+    expect(state.planCurrentRunningTaskId).toBe('');
+  });
+
   it('stores task metadata and attaches explicit task ids to visible timeline nodes', () => {
     const state = createState();
 
