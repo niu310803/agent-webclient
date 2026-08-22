@@ -3,7 +3,7 @@ import { Button, DatePicker, Input, Select, Spin } from "antd";
 import type { Dayjs } from "dayjs";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { Agent, Chat, Team, WorkerListItem } from "@/app/state/types";
-import { getAgents, getChats } from "@/shared/data";
+import { getAgents, getChats, requestDesktopHistoryOpenChat } from "@/shared/data";
 import {
   ALL_HISTORY_OWNERS,
   buildGlobalHistoryOwnerOptions,
@@ -12,6 +12,10 @@ import {
   type HistoryOwnerKey,
 } from "@/features/chats/lib/globalHistory";
 import { formatChatTimeLabel } from "@/features/chats/lib/chatListFormatter";
+import {
+  readInitialHistoryOwnerKey,
+  resolveLoadedHistoryOwnerKey,
+} from "@/features/chats/lib/historyRoute";
 import { splitWorkerListItems } from "@/features/workers/lib/workerDataCoordinator";
 import { useI18n } from "@/shared/i18n";
 import { MaterialIcon } from "@/shared/ui/MaterialIcon";
@@ -36,19 +40,21 @@ export const HistoryPage: React.FC = () => {
   const navigate = useNavigate();
   const [routeSearch] = useSearchParams();
   const [query, setQuery] = React.useState("");
-  const [ownerKey, setOwnerKey] = React.useState<HistoryOwnerKey>(
-    ALL_HISTORY_OWNERS,
+  const [ownerKey, setOwnerKey] = React.useState<HistoryOwnerKey>(() =>
+    readInitialHistoryOwnerKey(routeSearch),
   );
   const [dateRange, setDateRange] = React.useState<HistoryDateRange>(null);
   const [chats, setChats] = React.useState<Chat[]>([]);
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [teams, setTeams] = React.useState<Team[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [ownersLoaded, setOwnersLoaded] = React.useState(false);
   const [error, setError] = React.useState("");
 
   React.useEffect(() => {
     let disposed = false;
     setLoading(true);
+    setOwnersLoaded(false);
     setError("");
 
     void getChats()
@@ -81,6 +87,9 @@ export const HistoryPage: React.FC = () => {
         if (disposed) return;
         setAgents([]);
         setTeams([]);
+      })
+      .finally(() => {
+        if (!disposed) setOwnersLoaded(true);
       });
 
     return () => {
@@ -96,6 +105,14 @@ export const HistoryPage: React.FC = () => {
     () => new Map(ownerOptions.map((option) => [option.key, option.label] as const)),
     [ownerOptions],
   );
+  React.useEffect(() => {
+    const resolvedOwnerKey = resolveLoadedHistoryOwnerKey({
+      ownerKey,
+      ownerOptions,
+      loading: loading || !ownersLoaded,
+    });
+    if (resolvedOwnerKey !== ownerKey) setOwnerKey(resolvedOwnerKey);
+  }, [loading, ownerKey, ownerOptions, ownersLoaded]);
   const startAt = dateRange?.[0]?.startOf("day").valueOf();
   const endAt = dateRange?.[1]?.endOf("day").valueOf();
   const rows = React.useMemo(
@@ -121,6 +138,9 @@ export const HistoryPage: React.FC = () => {
   const openChat = (chat: Chat) => {
     const agentKey = chatAgentKey(chat);
     if (!agentKey) return;
+    if (requestDesktopHistoryOpenChat({ agentKey, chatId: chat.chatId })) {
+      return;
+    }
     navigate(
       buildSurfaceRoute(
         { kind: "agent", agentKey, chatId: chat.chatId },
