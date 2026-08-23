@@ -5,7 +5,6 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..");
 const exportRoot = path.join(repoRoot, "dist/export");
-const templateSource = path.join(exportRoot, "conversation.template.html");
 const manifest = JSON.parse(
   fs.readFileSync(path.join(exportRoot, "conversation-assets.json"), "utf8"),
 );
@@ -13,10 +12,6 @@ const assetSource = path.join(
   exportRoot,
   "assets",
   manifest.assetSet,
-);
-const platformTemplate = path.resolve(
-  repoRoot,
-  "../agent-platform/scripts/release-assets/conversation-export/conversation.template.html",
 );
 const tunnelAssetRoot = path.resolve(
   repoRoot,
@@ -39,19 +34,8 @@ function filesUnder(root, current = root) {
   });
 }
 
-assertFile(templateSource, "Build the conversation export template first.");
 if (!fs.statSync(assetSource, { throwIfNoEntry: false })?.isDirectory()) {
   throw new Error("Build the conversation export asset set first.");
-}
-
-if (checkOnly) {
-  assertFile(platformTemplate, "Platform conversation export template is missing.");
-  if (!fs.readFileSync(templateSource).equals(fs.readFileSync(platformTemplate))) {
-    throw new Error("Platform conversation export template is out of sync.");
-  }
-} else {
-  fs.mkdirSync(path.dirname(platformTemplate), { recursive: true });
-  fs.copyFileSync(templateSource, platformTemplate);
 }
 
 if (fs.existsSync(tunnelAssetRoot)) {

@@ -140,8 +140,8 @@ assert(
   "Export template exceeds 256 KiB.",
 );
 assert(
-  html.split(assetOriginMarker).length - 1 === 5,
-  "Export template must defer exactly five asset-origin references to Platform.",
+  html.includes(assetOriginMarker),
+  "Export template must contain at least one asset-origin marker.",
 );
 
 const externalAssets = [
@@ -226,23 +226,6 @@ for (const relativePath of auditedSources) {
   }
 }
 assert(rawMarkupBoundaries === 1, "Export runtime must have one raw-markup boundary.");
-
-const configuredPlatformArtifact = String(
-  process.env.CONVERSATION_EXPORT_PLATFORM_ARTIFACT || "",
-).trim();
-const platformArtifactPath = configuredPlatformArtifact
-  ? path.resolve(configuredPlatformArtifact)
-  : path.resolve(
-      repoRoot,
-      "../agent-platform/scripts/release-assets/conversation-export/conversation.template.html",
-    );
-if (configuredPlatformArtifact || fs.existsSync(platformArtifactPath)) {
-  assert(
-    fs.existsSync(platformArtifactPath)
-      && fs.readFileSync(templatePath).equals(fs.readFileSync(platformArtifactPath)),
-    "Agent Platform vendored conversation template is out of sync.",
-  );
-}
 
 const configuredTunnelRoot = String(
   process.env.CONVERSATION_EXPORT_TUNNEL_ASSET_ROOT || "",

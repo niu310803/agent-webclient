@@ -12,7 +12,7 @@
 ## 核心流程
 业务模块从 `src/shared/data` 导入具体函数，不直接拼接 URL。新增接口时先在 `endpoints.ts` 注册端点，再在 `client.ts` 或 `routedClient.ts` 暴露语义化函数，最后由 feature hook 或页面调用。
 
-静态 HTML 导出统一注册为 `GET /api/chat/export?chatId=...&format=html`，由 Platform 返回完整文档。`src/shared/data/conversationSharePath.ts` 只负责将事件中的合法 `shareId` 构造成 `/share/{id}` 路径，不发起匿名请求，也不读取运行时配置。
+静态 HTML 导出并行请求 `GET /api/chat/export?chatId=...&format=snapshot` 与同源 `/export/conversation.template.html`。Snapshot 保持 Blob，service 层只解析小体积模板并用 Blob parts 组装完整文档；Platform 不提供 HTML 格式。`src/shared/data/conversationSharePath.ts` 只负责将事件中的合法 `shareId` 构造成 `/share/{id}` 路径，不发起匿名请求，也不读取运行时配置。
 
 Chat 资源使用两层协议：后端新工具结果与 Markdown 提供不含 `chatId` 的 `<relativePath>` ChatScope 引用，前端统一通过 `classifyResourceUrl` 分类，并由 `URLSearchParams` 转换为 `GET /api/resource?file=<chatId>/<relativePath>`。POSIX 绝对路径转换为 `GET /api/resource?chatId=<chatId>&file=<absolutePath>`，其中 `/tmp/...` 与 Team Chat 都走同一请求分支，是否允许由 Platform 判定。HTTP(S)、`data:`、`blob:` 直接使用且不接收平台 Bearer；同源 `/api/resource`、`file://`、Windows/UNC、当前 chatId 前缀、query/fragment、反斜线、空段、`.`/`..` 与编码后路径分隔符都作为 URL 结构非法而不发起 fetch。`downloadResource`、`getResourceText`、`getResourceBlob` 只对 ChatScope 和结构合法的绝对路径使用 Bearer/Cookie，组件不手工拼接真实资源请求。
 

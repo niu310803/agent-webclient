@@ -8,9 +8,9 @@ AGW Web Client 是面向智能体平台的前端展示框架。它把智能体�
 
 `agent-webclient` 是 AGW / AGENT 协议的 Web 客户端。它不包含智能体后端，也不定义模型、工具、调度、记忆或权限的最终语义；它消费上游 `/api/*` 与 `/ws` 能力，为智能体平台提供统一前端。
 
-公开对话分享不由本项目运行或代理。Agent Platform 使用本项目构建的完整静态 HTML 模板创建分享，Tunnel 在公开 `/share/{shareId}` 直接返回已存储的 HTML；WebClient 不参与匿名访问热路径。
+公开对话分享不由本项目运行或代理。Desktop 常驻 Worker 从 Agent Platform 获取 `ConversationSnapshotV1`、从本项目正在运行的 HTTP Host 获取模板并创建 HTML，Tunnel 在公开 `/share/{shareId}` 直接返回已存储的字节；WebClient 不参与匿名访问热路径。
 
-对话静态 HTML 使用 `src/export/` 的独立只读组件树和严格 `ConversationSnapshotV1` parser。生产构建生成轻量 `frontend/dist/export/conversation.template.html` 和内容寻址的 `conversation-export-assets/<hash>`：模板只保留唯一 Snapshot JSON、初始 DOM、外部 CSS link 和外部 deferred runtime script，不包含内联样式或可执行脚本。资源路径固定到内容哈希，但 origin 不在构建时写死；Platform 根据当前受控 Tunnel origin 注入 CSS、JS 与 CSP 地址。React、ReactDOM 与 KaTeX 进入主 JS/CSS，ECharts 与 Mermaid 只在命中对应代码块时从同一不可变资产目录按需加载；所有入口资源带 SRI。Tunnel 托管不可变的内容寻址资产，WebClient 与 Desktop 都不参与匿名访问热路径。
+对话静态 HTML 使用 `src/export/` 的独立只读组件树和严格 `ConversationSnapshotV1` parser。生产构建生成轻量 `frontend/dist/export/conversation.template.html` 和内容寻址的 `conversation-export-assets/<hash>`：模板只保留唯一 Snapshot JSON、初始 DOM、外部 CSS link 和外部 deferred runtime script，不包含内联样式或可执行脚本。资源路径固定到内容哈希，但 origin 不在构建时写死；浏览器使用 Blob parts，Desktop 使用 Worker 字节算法注入 Snapshot、CSS/JS 与 CSP 地址。React、ReactDOM 与 KaTeX 进入主 JS/CSS，ECharts 与 Mermaid 只在命中对应代码块时从同一不可变资产目录按需加载；所有入口资源带 SRI。Tunnel 托管不可变的内容寻址资产，WebClient 与 Desktop 都不参与匿名访问热路径。
 
 接入以后，一个智能体后端可以快速拥有：
 
@@ -130,7 +130,7 @@ make test
 make build
 ```
 
-构建产物输出到 `dist/`；`dist/export/` 同时生成供 Agent Platform 使用的轻量模板、资产 manifest 和待同步到 Tunnel 的内容寻址资产集合。运行 `npm run sync:conversation-export` 会复制当前模板与资产集，但不会删除或覆盖 Tunnel 的历史资产集。
+构建产物输出到 `dist/`；`dist/export/` 同时生成由 WebClient Host 提供的轻量模板、资产 manifest 和待同步到 Tunnel 的内容寻址资产集合。模板随 WebClient Program Bundle 发布，不再同步到 Agent Platform；`npm run sync:conversation-export` 只追加当前 Tunnel 资产集，不删除或覆盖历史资产。
 
 ## Desktop Program Bundle 发布
 
