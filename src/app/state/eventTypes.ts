@@ -438,7 +438,12 @@ export interface AIUsageSnapshotEvent extends AIBaseEvent {
 export interface AIContextCompactEvent extends AIBaseEvent {
   type: AIContextEventTypeEnum;
   compactId?: string;
+  level?: "summary" | "l1_tools";
   summarySource?: string;
+  toolsCleared?: number;
+  toolsKept?: number;
+  tokensFreed?: number;
+  // Legacy fields remain optional so archived compact events can still replay.
   generation?: number;
   toolDigestCount?: number;
   compactedRunCount?: number;

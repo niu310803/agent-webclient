@@ -22,8 +22,23 @@ export interface GlobalHistoryFilters {
   endAt?: number;
 }
 
+export interface GlobalHistoryRowText {
+  title: string;
+  lastContent: string;
+}
+
 function text(value: unknown): string {
   return String(value || "").trim();
+}
+
+export function resolveGlobalHistoryRowText(
+  chat: Pick<Chat, "chatName" | "lastRunContent">,
+  fallback: GlobalHistoryRowText,
+): GlobalHistoryRowText {
+  return {
+    title: text(chat.chatName) || fallback.title,
+    lastContent: text(chat.lastRunContent) || fallback.lastContent,
+  };
 }
 
 export function resolveChatHistoryOwnerKey(

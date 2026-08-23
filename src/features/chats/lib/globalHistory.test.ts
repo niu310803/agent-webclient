@@ -4,6 +4,7 @@ import {
   buildGlobalHistoryOwnerOptions,
   filterGlobalHistoryChats,
   resolveChatHistoryOwnerKey,
+  resolveGlobalHistoryRowText,
 } from "@/features/chats/lib/globalHistory";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -115,5 +116,20 @@ describe("global history", () => {
       { key: "agent:beta", label: "beta", sourceId: "beta", type: "agent" },
       { key: "team:ops", label: "Operations", sourceId: "ops", type: "team" },
     ]);
+  });
+
+  it("resolves exactly one title line and one last-content line for each row", () => {
+    expect(
+      resolveGlobalHistoryRowText(
+        chat({ chatName: "  Release plan  ", lastRunContent: "  Ship it  " }),
+        { title: "Untitled", lastContent: "No preview" },
+      ),
+    ).toEqual({ title: "Release plan", lastContent: "Ship it" });
+    expect(
+      resolveGlobalHistoryRowText(
+        chat({ chatName: "", lastRunContent: "" }),
+        { title: "Untitled", lastContent: "No preview" },
+      ),
+    ).toEqual({ title: "Untitled", lastContent: "No preview" });
   });
 });

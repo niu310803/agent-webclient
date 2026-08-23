@@ -10,7 +10,7 @@ Agent 管理台由 `/agents` 路由进入，页面壳层为 `src/app/pages/agent
 - 与左侧 worker 数据保持一致，写操作后刷新相关缓存。
 
 ## 核心流程
-进入 `/agents` 后，路由参数决定选中 agent。`AgentConsole` 使用 data client 拉取 admin agents、详情和 editor options。保存或删除后调用对应 admin API，并失效 agents/model options 缓存。
+进入 `/agents` 后，路由参数决定选中 agent。`AgentConsole` 使用 data client 拉取 admin agents、详情和 editor options。排序继续向 `/api/admin/agents/order` 提交包含 invalid Agent 的完整管理 catalog；普通客户端使用的 `/api/agents/order` 不替代管理接口。保存或删除后调用对应 admin API，并失效 agents/model options 缓存。
 
 ## 新建与 ZIP 导入
 

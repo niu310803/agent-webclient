@@ -23,7 +23,6 @@ import { getAgent, getChats } from "@/shared/data";
 import { ApiError } from "@/shared/data/api/client";
 import { mergeFetchedChats } from "@/features/chats/lib/chatSummary";
 import { useI18n } from "@/shared/i18n";
-import { useDesktopActionForAgentPage } from "@/shared/hooks/agentPage/useDesktopAction";
 import { upsertAgentSummary } from "@/features/workers/lib/agentSummary";
 import { buildSurfaceRoute, readSurfacePresentationContext } from "@/features/surfaces/surfaceRoutes";
 import {
@@ -824,12 +823,6 @@ export const AgentChatShell: React.FC = () => {
     },
     [dispatch, refreshWorkerData, workerChatsByKey],
   );
-
-  useDesktopActionForAgentPage({
-    onOpenChatHistory: ({ workerKey }) => {
-      openRouteHistoryForWorker(workerKey);
-    },
-  });
 
   useEffect(() => {
     if (!historyWorkerKey) return;

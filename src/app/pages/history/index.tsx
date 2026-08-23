@@ -8,10 +8,13 @@ import {
   ALL_HISTORY_OWNERS,
   buildGlobalHistoryOwnerOptions,
   filterGlobalHistoryChats,
-  resolveChatHistoryOwnerKey,
+  resolveGlobalHistoryRowText,
   type HistoryOwnerKey,
 } from "@/features/chats/lib/globalHistory";
-import { formatChatTimeLabel } from "@/features/chats/lib/chatListFormatter";
+import {
+  readInitialHistoryOwnerKey,
+  resolveLoadedHistoryOwnerKey,
+} from "@/features/chats/lib/historyRoute";
 import { splitWorkerListItems } from "@/features/workers/lib/workerDataCoordinator";
 import { useI18n } from "@/shared/i18n";
 import { MaterialIcon } from "@/shared/ui/MaterialIcon";
@@ -26,29 +29,26 @@ function chatAgentKey(chat: Chat): string {
   return String(chat.agentKey || chat.firstAgentKey || "").trim();
 }
 
-function ownerSourceId(ownerKey: string): string {
-  const separatorIndex = ownerKey.indexOf(":");
-  return separatorIndex >= 0 ? ownerKey.slice(separatorIndex + 1) : ownerKey;
-}
-
 export const HistoryPage: React.FC = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [routeSearch] = useSearchParams();
   const [query, setQuery] = React.useState("");
-  const [ownerKey, setOwnerKey] = React.useState<HistoryOwnerKey>(
-    ALL_HISTORY_OWNERS,
+  const [ownerKey, setOwnerKey] = React.useState<HistoryOwnerKey>(() =>
+    readInitialHistoryOwnerKey(routeSearch),
   );
   const [dateRange, setDateRange] = React.useState<HistoryDateRange>(null);
   const [chats, setChats] = React.useState<Chat[]>([]);
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [teams, setTeams] = React.useState<Team[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [ownersLoaded, setOwnersLoaded] = React.useState(false);
   const [error, setError] = React.useState("");
 
   React.useEffect(() => {
     let disposed = false;
     setLoading(true);
+    setOwnersLoaded(false);
     setError("");
 
     void getChats()
@@ -81,6 +81,9 @@ export const HistoryPage: React.FC = () => {
         if (disposed) return;
         setAgents([]);
         setTeams([]);
+      })
+      .finally(() => {
+        if (!disposed) setOwnersLoaded(true);
       });
 
     return () => {
@@ -92,10 +95,14 @@ export const HistoryPage: React.FC = () => {
     () => buildGlobalHistoryOwnerOptions({ agents, chats, teams }),
     [agents, chats, teams],
   );
-  const ownerLabelByKey = React.useMemo(
-    () => new Map(ownerOptions.map((option) => [option.key, option.label] as const)),
-    [ownerOptions],
-  );
+  React.useEffect(() => {
+    const resolvedOwnerKey = resolveLoadedHistoryOwnerKey({
+      ownerKey,
+      ownerOptions,
+      loading: loading || !ownersLoaded,
+    });
+    if (resolvedOwnerKey !== ownerKey) setOwnerKey(resolvedOwnerKey);
+  }, [loading, ownerKey, ownerOptions, ownersLoaded]);
   const startAt = dateRange?.[0]?.startOf("day").valueOf();
   const endAt = dateRange?.[1]?.endOf("day").valueOf();
   const rows = React.useMemo(
@@ -194,10 +201,10 @@ export const HistoryPage: React.FC = () => {
         <div className="tw:flex tw:flex-col tw:gap-2">
           {rows.map((chat) => {
             const agentKey = chatAgentKey(chat);
-            const chatOwnerKey = resolveChatHistoryOwnerKey(chat);
-            const ownerLabel = chatOwnerKey
-              ? ownerLabelByKey.get(chatOwnerKey) || ownerSourceId(chatOwnerKey)
-              : t("history.global.owner.unknown");
+            const rowText = resolveGlobalHistoryRowText(chat, {
+              title: t("leftSidebar.titleUntitled"),
+              lastContent: t("history.noPreview"),
+            });
             return (
               <button
                 key={chat.chatId}
@@ -206,17 +213,11 @@ export const HistoryPage: React.FC = () => {
                 className="tw:flex tw:w-full tw:flex-col tw:gap-1 tw:rounded-xl tw:border tw:border-line-soft tw:bg-bg-card tw:px-4 tw:py-3 tw:text-left tw:hover:border-accent tw:disabled:cursor-not-allowed tw:disabled:opacity-50"
                 onClick={() => openChat(chat)}
               >
-                <span className="tw:flex tw:items-center tw:justify-between tw:gap-3">
-                  <strong className="tw:truncate">
-                    {chat.chatName || t("leftSidebar.titleUntitled")}
-                  </strong>
-                  <span className="tw:flex tw:flex-none tw:items-center tw:gap-3 tw:text-xs tw:text-ink-muted">
-                    <small>{ownerLabel}</small>
-                    <small>{formatChatTimeLabel(chat.updatedAt)}</small>
-                  </span>
-                </span>
-                <span className="tw:line-clamp-2 tw:text-xs tw:text-ink-muted">
-                  {chat.lastRunContent || chat.chatId}
+                <strong className="tw:block tw:w-full tw:truncate">
+                  {rowText.title}
+                </strong>
+                <span className="tw:block tw:w-full tw:truncate tw:text-xs tw:text-ink-muted">
+                  {rowText.lastContent}
                 </span>
               </button>
             );

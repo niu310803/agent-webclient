@@ -204,6 +204,16 @@ function applyCommands(state: TestState, commands: EventCommand[]): void {
         });
         state.timelineOrder.push(command.nodeId);
         break;
+      case 'SYSTEM_MESSAGE':
+        state.timelineNodes.set(command.nodeId, {
+          id: command.nodeId,
+          kind: 'message',
+          role: 'system',
+          text: command.text,
+          ts: command.ts,
+        });
+        state.timelineOrder.push(command.nodeId);
+        break;
     }
   }
 }
@@ -217,6 +227,34 @@ function processAndApply(state: TestState, event: AgentEvent, mode: 'live' | 're
 describe('processStreamEvent', () => {
   beforeEach(() => {
     clearAllAwaitingQuestionMeta();
+  });
+
+  it('replays the current compact completion event as one stable timeline node', () => {
+    const state = createState();
+
+    processAndApply(state, {
+      type: 'context.compact.complete',
+      chatId: 'chat-1',
+      compactId: 'compact-1',
+      level: 'summary',
+      summarySource: 'model',
+      preCompactEstimatedTokens: 9000,
+      postCompactEstimatedTokens: 4000,
+      compressionRatio: 4 / 9,
+      toolsCleared: 0,
+      toolsKept: 0,
+      tokensFreed: 0,
+      timestamp: 123,
+    }, 'replay', false);
+
+    expect(state.timelineOrder).toEqual(['compact_compact-1']);
+    expect(state.timelineNodes.get('compact_compact-1')).toMatchObject({
+      id: 'compact_compact-1',
+      kind: 'message',
+      role: 'system',
+      text: expect.stringContaining('44%'),
+      ts: 123,
+    });
   });
 
   it('creates request.query user nodes only during replay', () => {

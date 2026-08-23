@@ -223,7 +223,7 @@ export interface GetAgentsOptions {
 export interface AgentOrderResponse {
   version: number;
   order: string[];
-  updatedAt: number;
+  updatedAt?: number;
 }
 
 export interface UpdateAgentOrderRequest {
@@ -2936,7 +2936,17 @@ export interface CompactChatResponse {
   requestId?: string;
   chatId: string;
   compactId?: string;
+  level?: "summary" | "l1_tools";
   summarySource?: string;
+  preCompactEstimatedTokens?: number;
+  postCompactEstimatedTokens?: number;
+  compressionRatio?: number;
+  compactionUsage?: Record<string, unknown>;
+  toolsCleared?: number;
+  toolsKept?: number;
+  tokensFreed?: number;
+  detail?: string;
+  // Legacy fields remain optional so archived compact events can still replay.
   boundaryRunId?: string;
   boundarySeq?: number;
   generation?: number;
@@ -2946,13 +2956,8 @@ export interface CompactChatResponse {
   digestedRunIds?: string[];
   originalMessages?: number;
   projectedMessages?: number;
-  preCompactEstimatedTokens?: number;
-  postCompactEstimatedTokens?: number;
-  compressionRatio?: number;
-  compactionUsage?: Record<string, unknown>;
   cacheMetrics?: Record<string, unknown>;
   elapsedMs?: number;
-  detail?: string;
 }
 
 export interface MarkChatReadParams {
@@ -3284,11 +3289,7 @@ export function compactChat(
 ): Promise<ApiResponse<CompactChatResponse>> {
   return requestJson(dataEndpoints.compact.path, {
     method: "POST",
-    body: JSON.stringify({
-      requestId: params.requestId,
-      chatId: params.chatId,
-      trigger: "manual",
-    }),
+    body: JSON.stringify(resolveEndpointPayload(dataEndpoints.compact, params)),
   });
 }
 

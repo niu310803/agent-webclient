@@ -50,6 +50,7 @@ import {
   buildCompactUsageSnapshot,
   latestUsageSnapshotFromEvents,
   runBackgroundCommand,
+  useBackgroundCommandActions,
 } from '@/features/composer/hooks/useBackgroundCommandActions';
 import { useComposerSend } from '@/features/composer/hooks/useComposerSend';
 import type { AIUsageSnapshotEvent } from '@/app/state/types';
@@ -60,6 +61,11 @@ const createRequestIdMock = createRequestId as jest.Mock;
 
 function testT(key: string, params?: Record<string, unknown>): string {
   if (key === 'contextCompact.completed') return 'Context compacted';
+  if (key === 'contextCompact.failed') {
+    return `Context compaction failed: ${String(params?.detail || '')}`;
+  }
+  if (key === 'contextCompact.historyChanged') return 'Conversation history changed. Retry compaction.';
+  if (key === 'contextCompact.noHistory') return 'No history context to compact';
   if (key === 'contextCompact.source.model') return 'model';
   if (key === 'contextCompact.source.deterministicFallback') return 'fallback';
   if (key === 'contextCompact.summarySource') {
@@ -128,7 +134,7 @@ describe('compact usage snapshot helpers', () => {
 
     const snapshot = buildCompactUsageSnapshot({
       accepted: true,
-      status: 'compacted',
+      status: 'completed',
       chatId: 'chat-1',
       compactId: 'compact-1',
       postCompactEstimatedTokens: 5396,
@@ -182,11 +188,15 @@ describe('runBackgroundCommand compact behavior', () => {
     compactChatMock.mockResolvedValue({
       data: {
         accepted: true,
-        status: 'compacted',
+        status: 'completed',
         requestId: 'server_request',
         chatId: 'chat-1',
         compactId: 'compact-1',
+        level: 'summary',
         summarySource: 'model',
+        toolsCleared: 0,
+        toolsKept: 2,
+        tokensFreed: 3604,
         originalMessages: 10,
         postCompactEstimatedTokens: 5396,
         compactionUsage: {
@@ -245,6 +255,10 @@ describe('runBackgroundCommand compact behavior', () => {
         requestId: 'server_request',
         chatId: 'chat-1',
         compactId: 'compact-1',
+        level: 'summary',
+        toolsCleared: 0,
+        toolsKept: 2,
+        tokensFreed: 3604,
         compactionUsage: {
           promptTokens: 100,
           completionTokens: 20,
@@ -288,7 +302,7 @@ describe('runBackgroundCommand compact behavior', () => {
         accepted: false,
         status: 'skipped',
         chatId: 'chat-1',
-        detail: 'No history context to compact',
+        detail: 'no_compactable_history',
       },
     });
     const dispatch = jest.fn();
@@ -325,6 +339,53 @@ describe('runBackgroundCommand compact behavior', () => {
     });
   });
 
+  it('shows a retry error without completion state when compact history changed', async () => {
+    compactChatMock.mockResolvedValue({
+      data: {
+        accepted: false,
+        status: 'skipped',
+        chatId: 'chat-1',
+        compactId: 'compact-1',
+        level: 'summary',
+        detail: 'history_changed',
+      },
+    });
+    const dispatch = jest.fn();
+
+    await runBackgroundCommand({
+      chatId: 'chat-1',
+      commandType: 'compact',
+      dispatch,
+      events: [],
+      scheduleCommandStatusOverlayHide: jest.fn(),
+      t: testT,
+      texts: {
+        pending: 'Compacting context...',
+        error: 'Context compaction failed',
+      },
+      usageSnapshot: null,
+    });
+
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'PUSH_EVENT',
+    }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'SET_USAGE_SNAPSHOT',
+    }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'SET_TIMELINE_NODE',
+    }));
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SHOW_COMMAND_STATUS_OVERLAY',
+      commandType: 'compact',
+      phase: 'error',
+      text: 'Conversation history changed. Retry compaction.',
+    });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'success',
+    }));
+  });
+
   it('shows an error overlay and debug line when compact fails', async () => {
     compactChatMock.mockRejectedValue(new Error('network down'));
     const dispatch = jest.fn();
@@ -355,6 +416,43 @@ describe('runBackgroundCommand compact behavior', () => {
       text: 'Context compaction failed',
     });
     expect(scheduleCommandStatusOverlayHide).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks duplicate compact submissions while the first request is pending', async () => {
+    compactChatMock.mockReturnValue(new Promise(() => {}));
+    const state = createInitialState();
+    state.chatId = 'chat-1';
+    const dispatch = jest.fn();
+    let actions: ReturnType<typeof useBackgroundCommandActions> | null = null;
+
+    const Harness = () => {
+      actions = useBackgroundCommandActions({
+        dispatch,
+        state: {
+          chatId: state.chatId,
+          events: state.events,
+          usageSnapshot: state.usageSnapshot,
+        },
+        text: {
+          remember: { pending: '', error: '' },
+          learn: { pending: '', error: '' },
+          compact: {
+            pending: 'Compacting context...',
+            error: 'Context compaction failed',
+          },
+        },
+      });
+      return null;
+    };
+
+    renderToStaticMarkup(React.createElement(Harness));
+    const first = actions?.submitCompactCommand();
+    const duplicate = actions?.submitCompactCommand();
+
+    expect(compactChatMock).toHaveBeenCalledTimes(1);
+    await duplicate;
+    void first;
+    expect(compactChatMock).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -47,13 +47,34 @@ interface RunBackgroundCommandInput {
   usageSnapshot: AIUsageSnapshotEvent | null;
 }
 
+function isCompactCompleted(data: CompactChatResponse): boolean {
+  return data.accepted === true && data.status === "completed";
+}
+
+function isCompactNoHistory(data: CompactChatResponse): boolean {
+  return (
+    data.accepted === false &&
+    data.status === "skipped" &&
+    data.detail === "no_compactable_history"
+  );
+}
+
+function compactFailureText(
+  data: CompactChatResponse,
+  t: (key: string, params?: Record<string, unknown>) => string,
+): string {
+  if (data.detail === "history_changed") {
+    return t("contextCompact.historyChanged");
+  }
+  return t("contextCompact.failed", {
+    detail: data.detail || data.status || t("contextCompact.unknownError"),
+  });
+}
+
 function compactTimelineText(
   data: CompactChatResponse,
   t: (key: string, params?: Record<string, unknown>) => string,
 ): string {
-  if (!data.accepted || data.status === "skipped") {
-    return data.detail || t("contextCompact.noHistory");
-  }
   const source =
     data.summarySource === "deterministic_fallback"
       ? t("contextCompact.source.deterministicFallback")
@@ -111,7 +132,7 @@ export function buildCompactUsageSnapshot(
   data: CompactChatResponse,
   previous: AIUsageSnapshotEvent | null,
 ): AIUsageSnapshotEvent | null {
-  if (!data.accepted || data.status === "skipped") {
+  if (!isCompactCompleted(data)) {
     return null;
   }
   const currentSize = readCompactNumber(data.postCompactEstimatedTokens);
@@ -138,7 +159,7 @@ function buildCompactCompleteEvent(
   requestId: string,
   chatId: string,
 ): AIContextCompactEvent | null {
-  if (!data.accepted || data.status === "skipped") {
+  if (!isCompactCompleted(data)) {
     return null;
   }
   return {
@@ -147,7 +168,11 @@ function buildCompactCompleteEvent(
     chatId: data.chatId || chatId,
     runId: data.boundaryRunId,
     compactId: data.compactId,
+    level: data.level,
     summarySource: data.summarySource,
+    toolsCleared: data.toolsCleared,
+    toolsKept: data.toolsKept,
+    tokensFreed: data.tokensFreed,
     generation: data.generation,
     toolDigestCount: data.toolDigestCount,
     compactedRunCount: data.compactedRunCount,
@@ -200,21 +225,45 @@ export async function runBackgroundCommand(
       requestId,
       chatId,
     });
-    if (commandType === "compact" && response.data) {
-      const compactData = response.data as CompactChatResponse;
-      const compactEvent = buildCompactCompleteEvent(compactData, requestId, chatId);
-      if (compactEvent) {
-        dispatch({ type: "PUSH_EVENT", event: compactEvent });
+    let successText = texts.pending;
+    if (commandType === "compact") {
+      if (!response.data) {
+        throw new Error("compact response data is missing");
       }
-      const nextUsageSnapshot = buildCompactUsageSnapshot(
-        compactData,
-        usageSnapshot || latestUsageSnapshotFromEvents(events),
-      );
-      if (nextUsageSnapshot) {
-        dispatch({ type: "SET_USAGE_SNAPSHOT", snapshot: nextUsageSnapshot });
+      const compactData = response.data as CompactChatResponse;
+      const completed = isCompactCompleted(compactData);
+      const noHistory = isCompactNoHistory(compactData);
+      if (!completed && !noHistory) {
+        const failureText = compactFailureText(compactData, t);
+        dispatch({
+          type: "APPEND_DEBUG",
+          line: `[compact] rejected: ${compactData.detail || compactData.status || "unknown"}`,
+        });
+        dispatch({
+          type: "SHOW_COMMAND_STATUS_OVERLAY",
+          commandType,
+          phase: "error",
+          text: failureText,
+        });
+        return;
+      }
+      if (completed) {
+        const compactEvent = buildCompactCompleteEvent(compactData, requestId, chatId);
+        if (compactEvent) {
+          dispatch({ type: "PUSH_EVENT", event: compactEvent });
+        }
+        const nextUsageSnapshot = buildCompactUsageSnapshot(
+          compactData,
+          usageSnapshot || latestUsageSnapshotFromEvents(events),
+        );
+        if (nextUsageSnapshot) {
+          dispatch({ type: "SET_USAGE_SNAPSHOT", snapshot: nextUsageSnapshot });
+        }
       }
       const nodeId = `compact_${compactData.compactId || requestId}`;
-      const text = compactTimelineText(compactData, t);
+      const text = completed
+        ? compactTimelineText(compactData, t)
+        : t("contextCompact.noHistory");
       dispatch({
         type: "SET_TIMELINE_NODE",
         id: nodeId,
@@ -228,6 +277,9 @@ export async function runBackgroundCommand(
         },
       });
       dispatch({ type: "APPEND_TIMELINE_ORDER", id: nodeId });
+      successText = completed
+        ? t("contextCompact.completed")
+        : t("contextCompact.noHistory");
     }
     dispatch({
       type: "APPEND_DEBUG",
@@ -237,7 +289,7 @@ export async function runBackgroundCommand(
       type: "SHOW_COMMAND_STATUS_OVERLAY",
       commandType,
       phase: "success",
-      text: texts.pending,
+      text: successText,
     });
   } catch (error) {
     dispatch({

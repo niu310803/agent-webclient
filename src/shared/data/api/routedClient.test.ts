@@ -8,6 +8,7 @@ const mockGetChatRawJsonl = jest.fn();
 const mockGetChatLLMTraceRaw = jest.fn();
 const mockUpdateAgentName = jest.fn();
 const mockGetAutomations = jest.fn();
+const mockCompactChat = jest.fn();
 const mockRequestPlatformData = jest.fn();
 const mockGetBackendMode = jest.fn(() => "platform");
 
@@ -50,6 +51,7 @@ jest.mock("@/shared/data/api/client", () => ({
 	getChatLLMTraceRaw: (...args: unknown[]) => mockGetChatLLMTraceRaw(...args),
 	updateAgentName: (...args: unknown[]) => mockUpdateAgentName(...args),
 	getAutomations: (...args: unknown[]) => mockGetAutomations(...args),
+	compactChat: (...args: unknown[]) => mockCompactChat(...args),
 	normalizeChatSummariesPayload: jest.fn((data: unknown) => data),
 }));
 
@@ -242,6 +244,52 @@ describe("routedClient capability routing", () => {
 		expect(mockRequestPlatformData).toHaveBeenCalledTimes(1);
 		expect(mockRequestPlatformData).toHaveBeenCalledWith("/api/agents", undefined);
 		expect(mockGetChatRawJsonl).toHaveBeenCalledWith("chat-1");
+	});
+
+	it("routes manual summary compact over Platform WS and Gateway HTTP", async () => {
+		const compactResponse = ok({
+			accepted: true,
+			status: "completed",
+			requestId: "compact_request",
+			chatId: "chat-1",
+			compactId: "compact-1",
+			level: "summary",
+			summarySource: "model",
+			preCompactEstimatedTokens: 9000,
+			postCompactEstimatedTokens: 4000,
+			compressionRatio: 4 / 9,
+			compactionUsage: { totalTokens: 320 },
+			toolsCleared: 0,
+			toolsKept: 0,
+			tokensFreed: 0,
+			detail: "completed",
+		});
+		mockRequestPlatformData.mockResolvedValueOnce(compactResponse);
+		const routed = await import("./routedClient");
+
+		await expect(routed.compactChat({
+			requestId: "compact_request",
+			chatId: "chat-1",
+		})).resolves.toEqual(compactResponse);
+
+		expect(mockRequestPlatformData).toHaveBeenCalledWith("/api/compact", {
+			requestId: "compact_request",
+			chatId: "chat-1",
+			trigger: "manual",
+			level: "summary",
+		});
+		expect(mockCompactChat).not.toHaveBeenCalled();
+
+		mockGetBackendMode.mockReturnValue("gateway");
+		mockCompactChat.mockResolvedValueOnce(compactResponse);
+		await expect(routed.compactChat({
+			requestId: "compact_http_request",
+			chatId: "chat-2",
+		})).resolves.toEqual(compactResponse);
+		expect(mockCompactChat).toHaveBeenCalledWith({
+			requestId: "compact_http_request",
+			chatId: "chat-2",
+		});
 	});
 
 	it("never falls back to HTTP after transport or business failures", async () => {

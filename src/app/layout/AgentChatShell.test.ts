@@ -15,7 +15,6 @@ import {
   resolveNewChatResendRouteAction,
 } from "@/app/layout/AgentChatShell";
 import { ApiError } from "@/shared/data/api/client";
-import { SERVICE_WEBVIEW_BRIDGE_ACTION_CHANNEL } from "@/shared/hooks/agentPage/useDesktopAction";
 import type { Chat, WorkerRow } from "@/app/state/types";
 
 jest.mock("react-router-dom", () => ({
@@ -985,84 +984,6 @@ describe("AgentChatShell", () => {
       }),
     );
     expect(html).not.toContain("worker-history-modal");
-
-    useEffectSpy.mockRestore();
-  });
-
-  it("opens chat history from desktop action messages", () => {
-    const dispatch = jest.fn();
-    const dispatchEvent = globalWithDom.window?.dispatchEvent as jest.Mock;
-    const useEffectSpy = jest
-      .spyOn(React, "useEffect")
-      .mockImplementation((effect: React.EffectCallback) => {
-        effect();
-      });
-    const state = createInitialState();
-    const workerRow: WorkerRow = {
-      key: "agent:demo-agent",
-      type: "agent",
-      sourceId: "demo-agent",
-      displayName: "Demo Agent",
-      role: "Worker",
-      teamAgentLabels: [],
-      latestChatId: "chat-1",
-      latestRunId: "run-1",
-      latestUpdatedAt: 1000,
-      latestChatName: "Chat 1",
-      latestRunContent: "Preview",
-      hasHistory: true,
-      latestRunSortValue: 1000,
-      searchText: "demo agent",
-    };
-    const chat: Chat = {
-      chatId: "chat-1",
-      chatName: "Chat 1",
-      agentKey: "demo-agent",
-      firstAgentKey: "demo-agent",
-      updatedAt: 1000,
-      lastRunId: "run-1",
-      lastRunContent: "Preview",
-    };
-    let desktopActionListener:
-      | ((event: unknown, payload: unknown) => void)
-      | null = null;
-    globalWithDom.window!.electronAPI = {
-      onFromMain: jest.fn((_channel, listener) => {
-        desktopActionListener = listener;
-      }),
-    };
-    useAppState.mockReturnValue({
-      ...state,
-      agents: [{ key: "demo-agent", name: "Demo Agent", mode: "REACT" }],
-      chats: [chat],
-      workerSelectionKey: "agent:demo-agent",
-      workerRows: [workerRow],
-      workerIndexByKey: new Map([[workerRow.key, workerRow]]),
-    });
-    useAppDispatch.mockReturnValue(dispatch);
-
-    renderToStaticMarkup(React.createElement(AgentChatShell));
-
-    expect(globalWithDom.window!.electronAPI.onFromMain).toHaveBeenCalledWith(
-      SERVICE_WEBVIEW_BRIDGE_ACTION_CHANNEL,
-      expect.any(Function),
-    );
-    expect(desktopActionListener).toEqual(expect.any(Function));
-
-    desktopActionListener?.(null, {
-      action: "openChatHistory",
-      data: { agentKey: "demo-agent" },
-    });
-
-    expect(dispatchEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "agent:open-worker-history",
-        detail: {
-          workerKey: "agent:demo-agent",
-          agentKey: "demo-agent",
-        },
-      }),
-    );
 
     useEffectSpy.mockRestore();
   });
