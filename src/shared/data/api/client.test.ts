@@ -1,4 +1,5 @@
 import { Blob } from 'buffer';
+import { URL as NodeURL } from 'node:url';
 import { ACCESS_TOKEN_STORAGE_KEY } from '@/shared/data/auth/accessTokenStorage';
 import {
   AGENT_APP_AUTH_CONTEXT_STORAGE_KEY,
@@ -10,6 +11,7 @@ import {
   resetDesktopQueryContextBridgeForTests,
 } from '@/shared/data/desktop/desktopQueryContext';
 import { resetCompactIdStateForTests } from '@/shared/utils/compactId';
+import { MAX_CONVERSATION_HTML_BYTES } from '@/shared/data/conversationExport';
 
 jest.mock("@/shared/data/clientSurfaceId", () => ({
   getClientSurfaceId: () => "surface-test",
@@ -45,6 +47,7 @@ import {
   deleteAutomation,
   downloadResource,
   downloadChatExport,
+  downloadConversationHtmlExport,
   extractUploadChatId,
   extractUploadReferences,
   getAdminAgentDetail,
@@ -2508,6 +2511,154 @@ describe('data client query payloads', () => {
 
     expect(anchor.download).toBe('你好.md');
     expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it('assembles an HTML download from the Platform snapshot and WebClient template', async () => {
+    const snapshot = '{"version":1,"title":"Conversation"}';
+    const template = '<link href="__CONVERSATION_EXPORT_ASSET_ORIGIN__/runtime.css"><script type="application/json">__CONVERSATION_EXPORT_SNAPSHOT_JSON_V1__</script>';
+    let downloadedBlob: Blob | undefined;
+    const anchor = { click: jest.fn(), href: '', download: '', rel: '' };
+    global.document = {
+      body: { appendChild: jest.fn(), removeChild: jest.fn() },
+      createElement: jest.fn(() => anchor),
+    } as unknown as Document;
+    class MockURL extends NodeURL {}
+    Object.assign(MockURL, {
+      createObjectURL: jest.fn((blob: Blob) => {
+        downloadedBlob = blob;
+        return 'blob:conversation-html';
+      }),
+      revokeObjectURL: jest.fn(),
+    });
+    global.URL = MockURL as typeof global.URL;
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (key: string) => {
+          switch (key.toLowerCase()) {
+            case 'content-type':
+              return 'application/json; charset=utf-8';
+            case 'content-length':
+              return String(snapshot.length);
+            case 'content-disposition':
+              return 'attachment; filename="conversation.snapshot.json"';
+            default:
+              return null;
+          }
+        },
+      },
+      blob: async () => new Blob([snapshot], { type: 'application/json' }),
+    }).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (key: string) => {
+          switch (key.toLowerCase()) {
+            case 'content-type':
+              return 'text/html; charset=utf-8';
+            case 'content-length':
+              return String(template.length);
+            default:
+              return null;
+          }
+        },
+      },
+      text: async () => template,
+    });
+    (globalThis as typeof globalThis & {
+      __AGENT_WEBCLIENT_RUNTIME_CONFIG__?: Record<string, unknown>;
+    }).__AGENT_WEBCLIENT_RUNTIME_CONFIG__ = {
+      CONVERSATION_EXPORT_ASSET_ORIGIN: 'http://127.0.0.1:11961',
+    };
+
+    await downloadConversationHtmlExport('chat_1');
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/chat/export?chatId=chat_1&format=snapshot');
+    expect((fetchMock.mock.calls[0][1]?.headers as Record<string, string>).Accept).toBe('application/json');
+    expect(fetchMock.mock.calls[1][0]).toBe('/export/conversation.template.html');
+    expect(anchor.download).toBe('conversation.html');
+    expect(anchor.click).toHaveBeenCalledTimes(1);
+    await expect(downloadedBlob?.text()).resolves.toBe(
+      `<link href="http://127.0.0.1:11961/runtime.css"><script type="application/json">${snapshot}</script>`,
+    );
+  });
+
+  it('rejects HTML export when the runtime asset origin is missing', async () => {
+    await expect(downloadConversationHtmlExport('chat_1')).rejects.toThrow(
+      'conversation_export_asset_origin_invalid',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects snapshot export early when Content-Length exceeds 20 MiB', async () => {
+    const blob = jest.fn();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (key: string) => {
+          switch (key.toLowerCase()) {
+            case 'content-type':
+              return 'application/json; charset=utf-8';
+            case 'content-length':
+              return String(MAX_CONVERSATION_HTML_BYTES + 1);
+            default:
+              return null;
+          }
+        },
+      },
+      blob,
+    }).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: (key: string) => key.toLowerCase() === 'content-type' ? 'text/html' : null },
+      text: async () => '__CONVERSATION_EXPORT_SNAPSHOT_JSON_V1____CONVERSATION_EXPORT_ASSET_ORIGIN__',
+    });
+    (globalThis as typeof globalThis & {
+      __AGENT_WEBCLIENT_RUNTIME_CONFIG__?: Record<string, unknown>;
+    }).__AGENT_WEBCLIENT_RUNTIME_CONFIG__ = {
+      CONVERSATION_EXPORT_ASSET_ORIGIN: 'http://127.0.0.1:11961',
+    };
+
+    await expect(downloadConversationHtmlExport('chat_1')).rejects.toThrow(
+      `actual=${MAX_CONVERSATION_HTML_BYTES + 1} limit=${MAX_CONVERSATION_HTML_BYTES}`,
+    );
+    expect(blob).not.toHaveBeenCalled();
+  });
+
+  it('rejects an oversized assembled HTML Blob', async () => {
+    const template = '__CONVERSATION_EXPORT_SNAPSHOT_JSON_V1____CONVERSATION_EXPORT_ASSET_ORIGIN__';
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (key: string) =>
+          key.toLowerCase() === 'content-type'
+            ? 'application/json; charset=utf-8'
+            : null,
+      },
+      blob: async () =>
+        new Blob([Buffer.alloc(MAX_CONVERSATION_HTML_BYTES)], {
+          type: 'application/json',
+        }),
+    }).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (key: string) => key.toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : null,
+      },
+      text: async () => template,
+    });
+    (globalThis as typeof globalThis & {
+      __AGENT_WEBCLIENT_RUNTIME_CONFIG__?: Record<string, unknown>;
+    }).__AGENT_WEBCLIENT_RUNTIME_CONFIG__ = {
+      CONVERSATION_EXPORT_ASSET_ORIGIN: 'http://127.0.0.1:11961',
+    };
+
+    await expect(downloadConversationHtmlExport('chat_1')).rejects.toThrow(
+      `limit=${MAX_CONVERSATION_HTML_BYTES}`,
+    );
   });
 
   it('loads raw chat jsonl as authenticated text', async () => {

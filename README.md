@@ -8,7 +8,9 @@ AGW Web Client 是面向智能体平台的前端展示框架。它把智能体�
 
 `agent-webclient` 是 AGW / AGENT 协议的 Web 客户端。它不包含智能体后端，也不定义模型、工具、调度、记忆或权限的最终语义；它消费上游 `/api/*` 与 `/ws` 能力，为智能体平台提供统一前端。
 
-公开对话分享由同一构建产物中的 `/share/` 轻量入口承载。分享页与主对话复用纯 Markdown/ECharts 核心和无状态 reasoning disclosure，但不装配文件侧边栏、输入框、主应用状态、鉴权、Desktop Bridge 或实时连接。快照按每轮回复聚合运行过程，只显示一个默认折叠的完成入口；打开后 reasoning snapshot 与中间 assistant 过程内容按原始顺序穿插展示，每个 reasoning 仍保持可独立展开的第二层折叠，最后一条 assistant 内容作为最终答复留在外层。公开 schema 不接收工具调用 entry。存在权威 `durationMs` 时展示最后一次快照携带的完成用时。代码块仍延迟加载完整渲染器。该入口只读取同源 `/api/public/shares/{shareId}` JSON；部署层使用 `SHARE_API_BASE_URL` 将公开 API 转发到 Tunnel，并通过运行时 `SHARE_APP_DOWNLOAD_URL` 配置下载引导。
+公开对话分享不由本项目运行或代理。Desktop 常驻 Worker 从 Agent Platform 获取 `ConversationSnapshotV1`、从本项目正在运行的 HTTP Host 获取模板并创建 HTML，Tunnel 在公开 `/share/{shareId}` 直接返回已存储的字节；WebClient 不参与匿名访问热路径。
+
+对话静态 HTML 使用 `src/export/` 的独立只读组件树和严格 `ConversationSnapshotV1` parser。生产构建生成轻量 `frontend/dist/export/conversation.template.html` 和内容寻址的 `conversation-export-assets/<hash>`：模板只保留唯一 Snapshot JSON、初始 DOM、外部 CSS link 和外部 deferred runtime script，不包含内联样式或可执行脚本。资源路径固定到内容哈希，但 origin 不在构建时写死；浏览器使用 Blob parts，Desktop 使用 Worker 字节算法注入 Snapshot、CSS/JS 与 CSP 地址。React、ReactDOM 与 KaTeX 进入主 JS/CSS，ECharts 与 Mermaid 只在命中对应代码块时从同一不可变资产目录按需加载；所有入口资源带 SRI。Tunnel 托管不可变的内容寻址资产，WebClient 与 Desktop 都不参与匿名访问热路径。
 
 接入以后，一个智能体后端可以快速拥有：
 
@@ -86,7 +88,6 @@ Chat 图片与 Artifact 使用后端返回的不含 `chatId` 的 ChatScope `<rel
 - npm 9+
 - GNU Make
 - 可访问的 AGW / AGENT API 服务
-- Docker Desktop 或 Docker Engine + Compose v2，仅容器部署和镜像发布需要
 
 ### 1. 初始化配置
 
@@ -98,16 +99,12 @@ cp .env.example .env
 
 ```bash
 BASE_URL=http://localhost:11949
-SHARE_API_BASE_URL=http://127.0.0.1:11961
-# SHARE_APP_DOWNLOAD_URL=<实际可访问的 HTTP(S) 客户端下载地址>
 BACKEND_MODE=platform
 DESKTOP_APP=false
 ```
 
-- `PORT`：可选。本地开发端口和 Docker Compose 暴露到宿主机的端口，未设置时默认使用 `11948`；也可由 CLI args、环境变量或宿主配置注入。
+- `PORT`：可选。本地开发端口，未设置时默认使用 `11948`；也可由 CLI args、环境变量或 Desktop 宿主注入。
 - `BASE_URL`：AGW / AGENT 后端地址，前端会把 `/api/*` 和 `/ws` 代理到这里。
-- `SHARE_API_BASE_URL`：可选的 Tunnel 上游地址，只供开发服务器和 Nginx 代理公开分享 API，不写入浏览器运行时配置。
-- `SHARE_APP_DOWNLOAD_URL`：分享页的客户端下载引导地址，通过 `runtime-config.js` 注入，只接受 HTTP(S)。
 - `BACKEND_MODE`：默认 `platform`，保留 Bearer Token；设置为 `gateway` 时使用同源 Session Cookie，并在最终 401 后进入 Gateway 配置的登录流程。
 - `DESKTOP_APP`：Standalone 必须显式为 `false`。只有提供 canonical trusted realtime/workpanel/terminal bridge 的兼容 Desktop 才能注入 `true`；bridge 未到位时页面会硬阻断且不会回落直连。
 
@@ -125,7 +122,6 @@ make dev
 - `/api/*` 到 `BASE_URL`
 - `/ws` 到 `BASE_URL`
 - `/auth/*` 到 `BASE_URL`，供 Gateway OIDC/SSO 使用
-- `/api/public/shares/*` 到 `SHARE_API_BASE_URL`；访问 `/share/{shareId}` 时使用独立分享入口
 
 ### 3. 测试和构建
 
@@ -134,126 +130,9 @@ make test
 make build
 ```
 
-构建产物输出到 `dist/`，其中 `/share/` 入口位于 `dist/share/`，与主应用共用版本和镜像。
+构建产物输出到 `dist/`；`dist/export/` 同时生成由 WebClient Host 提供的轻量模板、资产 manifest 和待同步到 Tunnel 的内容寻址资产集合。模板随 WebClient Program Bundle 发布，不再同步到 Agent Platform；`npm run sync:conversation-export` 只追加当前 Tunnel 资产集，不删除或覆盖历史资产。
 
-## 一键容器部署
-
-适合本机、内网服务器或云主机快速部署。
-
-```bash
-cp .env.example .env
-# 修改 .env 中的 BASE_URL，必要时修改 PORT
-make docker-up
-```
-
-默认访问地址：
-
-```text
-http://localhost:11948
-```
-
-查看状态和日志：
-
-```bash
-docker compose -f compose.yml ps
-docker compose -f compose.yml logs -f webclient
-```
-
-停止服务：
-
-```bash
-make docker-down
-```
-
-容器内使用 Nginx 托管静态资源，并将 `/api/*` 和 `/ws` 反向代理到上游服务。Nginx 已对流式接口关闭代理缓冲，避免实时事件被延迟。
-
-## 云端部署
-
-### 方式一：云主机源码部署
-
-在云服务器上安装 Docker 和 Compose 后执行：
-
-```bash
-git clone <your-repo-url> agent-webclient
-cd agent-webclient
-cp .env.example .env
-```
-
-修改 `.env`：
-
-```bash
-PORT=11948
-BASE_URL=https://your-agent-api.example.com
-SHARE_API_BASE_URL=https://your-tunnel-api.example.com
-```
-
-启动：
-
-```bash
-make docker-up
-```
-
-如果需要公网访问，请在安全组、防火墙和域名网关中开放对应端口或域名。
-
-### 方式二：发布离线镜像包
-
-在构建机生成镜像部署包：
-
-```bash
-make release-image
-```
-
-也可以指定架构：
-
-```bash
-ARCH=amd64 make release-image
-ARCH=arm64 make release-image
-```
-
-产物路径：
-
-```text
-dist/release/agent-webclient-image-vX.Y.Z-linux-<arch>.tar.gz
-```
-
-将压缩包上传到目标服务器后：
-
-```bash
-tar -xzf agent-webclient-image-vX.Y.Z-linux-amd64.tar.gz
-cd agent-webclient
-cp .env.example .env
-# 修改 .env 中的 BASE_URL、SHARE_API_BASE_URL 和 HOST_PORT
-./start.sh
-```
-
-停止：
-
-```bash
-./stop.sh
-```
-
-这种方式适合不能在服务器上联网构建镜像的环境。
-
-### 方式三：静态资源接入已有网关
-
-也可以执行：
-
-```bash
-make build
-```
-
-然后将 `dist/` 部署到已有静态资源服务，并自行配置：
-
-- `/api/*` 反向代理到 `BASE_URL`
-- `/api/public/shares/*` 优先反向代理到 Tunnel，并禁止落入普通 `/api/*` 上游
-- `/ws` 反向代理到 `BASE_URL` 并保留 WebSocket upgrade
-- 对流式接口关闭代理缓冲
-- SPA fallback 到 `index.html`
-- `/share/*` fallback 到 `/share/index.html`
-
-没有现成网关配置时，优先使用 Docker Compose。
-
-## Desktop Program Bundle
+## Desktop Program Bundle 发布
 
 项目支持打包为 Desktop 托管的 Program Bundle：
 
@@ -284,17 +163,16 @@ Program Bundle 包含 `manifest.json`、`.env.example`、`frontend/dist/` 和 De
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `PORT` | 否 | 本地开发端口，Docker Compose 中也是宿主机暴露端口；未设置时默认 `11948`，也可由 CLI args、环境变量或宿主配置注入 |
+| `PORT` | 否 | 本地开发端口；Program Bundle 运行时由 Desktop 宿主注入 |
 | `BASE_URL` | 是 | AGW / AGENT 后端 HTTP API 与主 `/ws` 基地址 |
-| `SHARE_API_BASE_URL` | 否 | Tunnel HTTP origin；公开 `/share/` 部署启用时必须配置，仅供代理层使用 |
-| `SHARE_APP_DOWNLOAD_URL` | 否 | 分享页客户端下载地址；通过运行时配置注入，只接受 HTTP(S) |
 | `BACKEND_MODE` | 否 | `platform`（默认）保留 Token 认证；`gateway` 使用 Session Cookie、CSRF 与登录回跳 |
 | `DESKTOP_APP` | 否 | Standalone 固定为 `false`；兼容 Desktop host 注入 `true`，bridge 缺失或不兼容时硬阻断 |
 | `DEBUG_PANEL_ENABLED` | 否 | 是否显示调试面板入口 |
 | `SETTINGS_MENU_ENABLED` | 否 | 是否显示设置入口 |
 | `MEMORY_ENABLED` | 否 | 是否显示 memory 相关入口 |
+| `CONVERSATION_EXPORT_ASSET_ORIGIN` | HTML 导出时是 | Tunnel 资源 origin；生产必须为 HTTPS，本地开发可使用 loopback HTTP，例如 `http://127.0.0.1:11961` |
 
-开发、容器部署和 release 构建复用同一组变量名。`.env` 是本地真实配置，不提交版本库。
+本地开发和 Program Bundle 构建复用同一组变量名。`.env` 是本地真实配置，不提交版本库。
 
 ## 上游服务要求
 
@@ -320,15 +198,13 @@ AGW Web Client 需要一个可访问的上游智能体服务。常用入口包�
 public/                 HTML 模板等静态入口资源
 docs/                   中文专题设计文档和截图资源，专题按模块编号
 src/app/                应用壳层、路由、布局、状态与页面入口
-src/share/              匿名只读分享入口
+src/export/             静态对话 HTML 的独立只读渲染运行时
 src/features/           对话、时间线、工具、计划、worker 等功能模块
 src/shared/data/        API 端点注册、请求客户端、鉴权和轻量缓存
 src/shared/styles/      全局主题变量和样式入口
 src/shared/ui/          通用基础 UI 组件
 src/shared/utils/       通用工具函数
-scripts/                发布、镜像和程序包辅助脚本
-nginx.conf              容器内 Nginx 反向代理模板
-compose.yml             Docker Compose 部署入口
+scripts/                Program Bundle、协议同步和构建辅助脚本
 ```
 
 ## 深入文档
@@ -391,7 +267,7 @@ compose.yml             Docker Compose 部署入口
 - [70-语音能力-语音输入ASR与TTS](docs/70-语音能力-语音输入ASR与TTS.md)
 - [80-界面基础-样式主题基础UI与国际化](docs/80-界面基础-样式主题基础UI与国际化.md)
 - [81-宿主集成-Desktop宿主桥接](docs/81-宿主集成-Desktop宿主桥接.md)
-- [90-交付运维-开发代理与生产反向代理](docs/90-交付运维-开发代理与生产反向代理.md)
+- [90-交付运维-开发代理与Desktop托管](docs/90-交付运维-开发代理与生产反向代理.md)
 - [91-交付运维-版本化打包与部署](docs/91-交付运维-版本化打包与部署.md)
 - [92-质量验证-手工测试用例](docs/92-质量验证-手工测试用例.md)
 
@@ -399,15 +275,15 @@ compose.yml             Docker Compose 部署入口
 
 ### 页面能打开，但接口请求失败
 
-检查 `.env` 中的 `BASE_URL` 是否能被当前运行环境访问。容器部署时，`BASE_URL=http://localhost:xxxx` 指的是容器内部的 localhost，通常需要改成可从容器访问的宿主机地址、内网域名或 `host.docker.internal`。
+检查 `.env` 中的 `BASE_URL` 是否能被本地开发环境访问，并确认目标服务端口正确。
 
 ### WebSocket 无法连接
 
-确认上游服务实际提供 `/ws`，并确认反向代理保留了 `Upgrade` 和 `Connection` 头。容器内置 Nginx 已处理这部分，使用自定义网关时需要自行配置。
+确认上游服务实际提供 `/ws`。本地开发检查 Webpack Dev Server 代理配置，Desktop 中检查 host-managed 服务状态与 Main Broker 日志。
 
 ### 实时输出变慢或一次性刷出
 
-通常是代理缓冲未关闭。需要对 `/api/*` 和 `/ws` 关闭 buffering，并提高 read timeout。
+检查上游事件是否逐帧 flush，并确认本地开发代理或 Desktop 托管层没有积压响应。
 
 ### 本地启动端口冲突
 

@@ -14,7 +14,7 @@
 
 Agent 顺序有两条 HTTP-only 数据边界：普通客户端通过 `GET/PUT /api/agents/order` 读取和提交全部有效 runtime Agent 的 catalog 顺序；Agent 管理台继续使用 `/api/admin/agents/order` 处理包含 invalid Agent 的完整 admin 顺序。两者复用 `AgentOrderResponse { version, order, updatedAt? }`，其中未生成顺序文件时 `updatedAt` 可以省略；前端不把 public endpoint 注册为 WebSocket route，也不把管理台切到 public mutation。
 
-匿名分享是独立的公开 HTTP 边界：`src/shared/data/conversationShare.ts` 固定以无凭证 `GET /api/public/shares/{shareId}` 读取数据，使用 6 秒超时，并严格接受 `schemaVersion=1` 的有序 `entries`；entry 只允许 user/assistant message 或 reasoning，reasoning 可携带非负整数 `durationMs`。它不进入需要 Platform 鉴权和传输路由的 endpoint registry，避免公开页初始化 Token、WebSocket 或缓存运行时。
+静态 HTML 导出并行请求 `GET /api/chat/export?chatId=...&format=snapshot` 与同源 `/export/conversation.template.html`。Snapshot 保持 Blob，service 层只解析小体积模板并用 Blob parts 组装完整文档；Platform 不提供 HTML 格式。`src/shared/data/conversationSharePath.ts` 只负责将事件中的合法 `shareId` 构造成 `/share/{id}` 路径，不发起匿名请求，也不读取运行时配置。
 
 Chat 资源使用两层协议：后端新工具结果与 Markdown 提供不含 `chatId` 的 `<relativePath>` ChatScope 引用，前端统一通过 `classifyResourceUrl` 分类，并由 `URLSearchParams` 转换为 `GET /api/resource?file=<chatId>/<relativePath>`。POSIX 绝对路径转换为 `GET /api/resource?chatId=<chatId>&file=<absolutePath>`，其中 `/tmp/...` 与 Team Chat 都走同一请求分支，是否允许由 Platform 判定。HTTP(S)、`data:`、`blob:` 直接使用且不接收平台 Bearer；同源 `/api/resource`、`file://`、Windows/UNC、当前 chatId 前缀、query/fragment、反斜线、空段、`.`/`..` 与编码后路径分隔符都作为 URL 结构非法而不发起 fetch。`downloadResource`、`getResourceText`、`getResourceBlob` 只对 ChatScope 和结构合法的绝对路径使用 Bearer/Cookie，组件不手工拼接真实资源请求。
 
@@ -67,4 +67,4 @@ Skills 管理接口统一使用 `/api/admin/skills/*` 的新版 manifest 与文�
 - `../src/shared/data/api/client.ts`
 - `../src/shared/data/index.ts`
 - `../src/shared/data/api/client.test.ts`
-- `../src/shared/data/conversationShare.ts`
+- `../src/shared/data/conversationSharePath.ts`
