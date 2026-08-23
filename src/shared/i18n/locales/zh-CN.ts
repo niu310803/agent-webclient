@@ -779,6 +779,7 @@ export const zhCNMessages = {
   "contextCompact.completed": "已压缩上下文",
   "contextCompact.compressionRatio": "压缩比：{ratio}%",
   "contextCompact.failed": "上下文压缩失败：{detail}",
+  "contextCompact.historyChanged": "对话历史已变化，请重试压缩",
   "contextCompact.noHistory": "没有可压缩的历史上下文",
   "contextCompact.originalMessages": "历史消息：{count}",
   "contextCompact.source.deterministicFallback": "规则兜底",

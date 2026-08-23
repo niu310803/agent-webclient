@@ -779,6 +779,7 @@ export const enUSMessages = {
   "contextCompact.completed": "Context compacted",
   "contextCompact.compressionRatio": "Compression ratio: {ratio}%",
   "contextCompact.failed": "Context compaction failed: {detail}",
+  "contextCompact.historyChanged": "Conversation history changed. Retry compaction.",
   "contextCompact.noHistory": "No history context to compact",
   "contextCompact.originalMessages": "History messages: {count}",
   "contextCompact.source.deterministicFallback": "rule fallback",

@@ -1503,6 +1503,7 @@ describe('data client query payloads', () => {
       requestId: 'req_compact',
       chatId: 'chat_1',
       trigger: 'manual',
+      level: 'summary',
     });
 
     expect(rememberPayload).not.toHaveProperty('message');
