@@ -5,7 +5,6 @@ export * from "@/shared/data/auth/authCoordinator";
 export * from "@/shared/data/api/client";
 export * from "@/shared/data/desktop/desktopFileSystem";
 export * from "@/shared/data/desktop/desktopHostBridge";
-export * from "@/shared/data/desktop/desktopHistory";
 export * from "@/shared/data/desktop/desktopQueryContext";
 export * from "@/shared/data/desktop/desktopScreenshot";
 export * from "@/shared/data/api/endpointRegistry";

@@ -3,15 +3,14 @@ import { Button, DatePicker, Input, Select, Spin } from "antd";
 import type { Dayjs } from "dayjs";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { Agent, Chat, Team, WorkerListItem } from "@/app/state/types";
-import { getAgents, getChats, requestDesktopHistoryOpenChat } from "@/shared/data";
+import { getAgents, getChats } from "@/shared/data";
 import {
   ALL_HISTORY_OWNERS,
   buildGlobalHistoryOwnerOptions,
   filterGlobalHistoryChats,
-  resolveChatHistoryOwnerKey,
+  resolveGlobalHistoryRowText,
   type HistoryOwnerKey,
 } from "@/features/chats/lib/globalHistory";
-import { formatChatTimeLabel } from "@/features/chats/lib/chatListFormatter";
 import {
   readInitialHistoryOwnerKey,
   resolveLoadedHistoryOwnerKey,
@@ -28,11 +27,6 @@ type HistoryDateRange = [Dayjs | null, Dayjs | null] | null;
 
 function chatAgentKey(chat: Chat): string {
   return String(chat.agentKey || chat.firstAgentKey || "").trim();
-}
-
-function ownerSourceId(ownerKey: string): string {
-  const separatorIndex = ownerKey.indexOf(":");
-  return separatorIndex >= 0 ? ownerKey.slice(separatorIndex + 1) : ownerKey;
 }
 
 export const HistoryPage: React.FC = () => {
@@ -101,10 +95,6 @@ export const HistoryPage: React.FC = () => {
     () => buildGlobalHistoryOwnerOptions({ agents, chats, teams }),
     [agents, chats, teams],
   );
-  const ownerLabelByKey = React.useMemo(
-    () => new Map(ownerOptions.map((option) => [option.key, option.label] as const)),
-    [ownerOptions],
-  );
   React.useEffect(() => {
     const resolvedOwnerKey = resolveLoadedHistoryOwnerKey({
       ownerKey,
@@ -138,9 +128,6 @@ export const HistoryPage: React.FC = () => {
   const openChat = (chat: Chat) => {
     const agentKey = chatAgentKey(chat);
     if (!agentKey) return;
-    if (requestDesktopHistoryOpenChat({ agentKey, chatId: chat.chatId })) {
-      return;
-    }
     navigate(
       buildSurfaceRoute(
         { kind: "agent", agentKey, chatId: chat.chatId },
@@ -214,10 +201,10 @@ export const HistoryPage: React.FC = () => {
         <div className="tw:flex tw:flex-col tw:gap-2">
           {rows.map((chat) => {
             const agentKey = chatAgentKey(chat);
-            const chatOwnerKey = resolveChatHistoryOwnerKey(chat);
-            const ownerLabel = chatOwnerKey
-              ? ownerLabelByKey.get(chatOwnerKey) || ownerSourceId(chatOwnerKey)
-              : t("history.global.owner.unknown");
+            const rowText = resolveGlobalHistoryRowText(chat, {
+              title: t("leftSidebar.titleUntitled"),
+              lastContent: t("history.noPreview"),
+            });
             return (
               <button
                 key={chat.chatId}
@@ -226,17 +213,11 @@ export const HistoryPage: React.FC = () => {
                 className="tw:flex tw:w-full tw:flex-col tw:gap-1 tw:rounded-xl tw:border tw:border-line-soft tw:bg-bg-card tw:px-4 tw:py-3 tw:text-left tw:hover:border-accent tw:disabled:cursor-not-allowed tw:disabled:opacity-50"
                 onClick={() => openChat(chat)}
               >
-                <span className="tw:flex tw:items-center tw:justify-between tw:gap-3">
-                  <strong className="tw:truncate">
-                    {chat.chatName || t("leftSidebar.titleUntitled")}
-                  </strong>
-                  <span className="tw:flex tw:flex-none tw:items-center tw:gap-3 tw:text-xs tw:text-ink-muted">
-                    <small>{ownerLabel}</small>
-                    <small>{formatChatTimeLabel(chat.updatedAt)}</small>
-                  </span>
-                </span>
-                <span className="tw:line-clamp-2 tw:text-xs tw:text-ink-muted">
-                  {chat.lastRunContent || chat.chatId}
+                <strong className="tw:block tw:w-full tw:truncate">
+                  {rowText.title}
+                </strong>
+                <span className="tw:block tw:w-full tw:truncate tw:text-xs tw:text-ink-muted">
+                  {rowText.lastContent}
                 </span>
               </button>
             );
