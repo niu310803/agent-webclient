@@ -16,6 +16,7 @@ import {
   resolveCurrentWorkerSummary,
   isCoderAgent,
   isDedicatedKbaseWorker,
+  supportsActiveRunContextCompact,
 } from "@/features/workers/lib/currentWorker";
 import {
   isDebugPanelEnabled,
@@ -684,6 +685,8 @@ export const TopNav: React.FC<{ surface?: "root" | "agent" }> = ({
         compact: {
           pending: t("composer.background.compact.pending"),
           error: t("composer.background.compact.error"),
+          waiting: t("composer.background.compact.waiting"),
+          compacting: t("composer.background.compact.compacting"),
         },
       },
     });
@@ -693,8 +696,7 @@ export const TopNav: React.FC<{ surface?: "root" | "agent" }> = ({
     state.commandStatusOverlay.phase === "pending";
   const compactDisabled =
     !String(state.chatId || "").trim() ||
-    isMainChatRunning ||
-    isCommandOverlayOpen ||
+    (isMainChatRunning && !supportsActiveRunContextCompact(currentWorker)) ||
     submittingCommand === "compact" ||
     compactStatusOverlayPending;
   const handleToggleVoiceMode = () => {

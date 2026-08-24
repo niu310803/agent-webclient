@@ -56,6 +56,8 @@ export interface SlashCommandAvailability {
   workerHistoryCount: number;
   commandOverlayOpen: boolean;
   canShowUsage: boolean;
+  canCompactActiveRun?: boolean;
+  compactPending?: boolean;
 }
 
 export interface SlashCommandFilterOptions {
@@ -261,7 +263,15 @@ export function isSlashCommandDisabled(
   if (commandId === 'btw') {
     return !availability.hasActiveChat || availability.commandOverlayOpen;
   }
-  if (commandId === 'remember' || commandId === 'learn' || commandId === 'compact') {
+  if (commandId === 'compact') {
+    return (
+      !availability.hasActiveChat ||
+      availability.commandOverlayOpen ||
+      availability.compactPending === true ||
+      (availability.streaming && availability.canCompactActiveRun === false)
+    );
+  }
+  if (commandId === 'remember' || commandId === 'learn') {
     return availability.streaming || !availability.hasActiveChat || availability.commandOverlayOpen;
   }
   if (commandId === 'voice') {

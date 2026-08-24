@@ -75,6 +75,8 @@ interface UseComposerSendInput {
     learnError: string;
     compactPending: string;
     compactError: string;
+    compactWaiting?: string;
+    compactCompacting?: string;
   };
   hasUploadingAttachments: boolean;
   inputValue: string;
@@ -187,6 +189,8 @@ export function useComposerSend(input: UseComposerSendInput) {
       compact: {
         pending: backgroundCommandText.compactPending,
         error: backgroundCommandText.compactError,
+        waiting: backgroundCommandText.compactWaiting,
+        compacting: backgroundCommandText.compactCompacting,
       },
     },
   });

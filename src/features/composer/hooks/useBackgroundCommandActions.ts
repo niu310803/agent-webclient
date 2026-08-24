@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import type { AppAction } from "@/app/state/AppContext";
 import type {
@@ -21,6 +21,8 @@ export type BackgroundCommandType = "remember" | "learn" | "compact";
 export interface BackgroundCommandTexts {
   pending: string;
   error: string;
+  waiting?: string;
+  compacting?: string;
 }
 
 export interface BackgroundCommandTextMap {
@@ -41,6 +43,8 @@ interface RunBackgroundCommandInput {
   dispatch: Dispatch<AppAction>;
   events: AppState["events"];
   now?: () => number;
+  requestId?: string;
+  getEvents?: () => AppState["events"];
   scheduleCommandStatusOverlayHide: () => void;
   t: (key: string, params?: Record<string, unknown>) => string;
   texts: BackgroundCommandTexts;
@@ -65,6 +69,15 @@ function compactFailureText(
 ): string {
   if (data.detail === "history_changed") {
     return t("contextCompact.historyChanged");
+  }
+  if (data.detail === "run_interrupted") {
+    return t("contextCompact.runInterrupted");
+  }
+  if (data.detail === "unsupported_active_run") {
+    return t("contextCompact.unsupportedActiveRun");
+  }
+  if (data.detail === "compact_in_progress") {
+    return t("contextCompact.compactInProgress");
   }
   return t("contextCompact.failed", {
     detail: data.detail || data.status || t("contextCompact.unknownError"),
@@ -166,8 +179,12 @@ function buildCompactCompleteEvent(
     type: AIContextEventTypeEnum.CompactComplete,
     requestId: data.requestId || requestId,
     chatId: data.chatId || chatId,
-    runId: data.boundaryRunId,
+    runId: data.runId || data.boundaryRunId,
     compactId: data.compactId,
+    trigger: data.trigger,
+    scope: data.scope,
+    retryable: data.retryable,
+    detail: data.detail,
     level: data.level,
     summarySource: data.summarySource,
     toolsCleared: data.toolsCleared,
@@ -188,6 +205,19 @@ function buildCompactCompleteEvent(
   };
 }
 
+function hasMatchingCompactEvent(
+  events: readonly unknown[],
+  data: CompactChatResponse,
+  requestId: string,
+  type: string,
+): boolean {
+  return events.some((event) => {
+    if (!isObjectRecord(event) || event.type !== type) return false;
+    if (data.compactId && event.compactId === data.compactId) return true;
+    return event.requestId === (data.requestId || requestId);
+  });
+}
+
 function requestForCommand(commandType: BackgroundCommandType) {
   if (commandType === "remember") return rememberChat;
   if (commandType === "learn") return learnChat;
@@ -202,7 +232,9 @@ export async function runBackgroundCommand(
     commandType,
     dispatch,
     events,
+    getEvents,
     now = () => Date.now(),
+    requestId: providedRequestId,
     scheduleCommandStatusOverlayHide,
     t,
     texts,
@@ -212,12 +244,15 @@ export async function runBackgroundCommand(
     return;
   }
 
-  const requestId = createRequestId(commandType);
+  const requestId = providedRequestId || createRequestId(commandType);
   dispatch({
     type: "SHOW_COMMAND_STATUS_OVERLAY",
     commandType,
     phase: "pending",
-    text: texts.pending,
+    text:
+      commandType === "compact"
+        ? texts.waiting || texts.pending
+        : texts.pending,
   });
 
   try {
@@ -247,36 +282,45 @@ export async function runBackgroundCommand(
         });
         return;
       }
+      const currentEvents = getEvents?.() || events;
+      const completeEventReceived = hasMatchingCompactEvent(
+        currentEvents,
+        compactData,
+        requestId,
+        AIContextEventTypeEnum.CompactComplete,
+      );
       if (completed) {
         const compactEvent = buildCompactCompleteEvent(compactData, requestId, chatId);
-        if (compactEvent) {
+        if (compactEvent && !completeEventReceived) {
           dispatch({ type: "PUSH_EVENT", event: compactEvent });
         }
         const nextUsageSnapshot = buildCompactUsageSnapshot(
           compactData,
-          usageSnapshot || latestUsageSnapshotFromEvents(events),
+          usageSnapshot || latestUsageSnapshotFromEvents(currentEvents),
         );
         if (nextUsageSnapshot) {
           dispatch({ type: "SET_USAGE_SNAPSHOT", snapshot: nextUsageSnapshot });
         }
       }
-      const nodeId = `compact_${compactData.compactId || requestId}`;
-      const text = completed
-        ? compactTimelineText(compactData, t)
-        : t("contextCompact.noHistory");
-      dispatch({
-        type: "SET_TIMELINE_NODE",
-        id: nodeId,
-        node: {
+      if (!completed || !completeEventReceived) {
+        const nodeId = `compact_${compactData.compactId || requestId}`;
+        const text = completed
+          ? compactTimelineText(compactData, t)
+          : t("contextCompact.noHistory");
+        dispatch({
+          type: "SET_TIMELINE_NODE",
           id: nodeId,
-          kind: "message",
-          role: "system",
-          messageVariant: "compact",
-          text,
-          ts: now(),
-        },
-      });
-      dispatch({ type: "APPEND_TIMELINE_ORDER", id: nodeId });
+          node: {
+            id: nodeId,
+            kind: "message",
+            role: "system",
+            messageVariant: "compact",
+            text,
+            ts: now(),
+          },
+        });
+        dispatch({ type: "APPEND_TIMELINE_ORDER", id: nodeId });
+      }
       successText = completed
         ? t("contextCompact.completed")
         : t("contextCompact.noHistory");
@@ -307,6 +351,8 @@ export async function runBackgroundCommand(
   }
 }
 
+const pendingCompactChats = new Set<string>();
+
 export function useBackgroundCommandActions(input: {
   dispatch: Dispatch<AppAction>;
   state: BackgroundCommandState;
@@ -317,6 +363,25 @@ export function useBackgroundCommandActions(input: {
   const [submittingCommand, setSubmittingCommand] =
     useState<BackgroundCommandType | null>(null);
   const submittingCommandRef = useRef<BackgroundCommandType | null>(null);
+  const activeCompactRequestIdRef = useRef("");
+  const eventsRef = useRef(state.events);
+  eventsRef.current = state.events;
+
+  useEffect(() => {
+    const requestId = activeCompactRequestIdRef.current;
+    if (submittingCommand !== "compact" || !requestId) return;
+    const started = [...state.events].reverse().find((event) =>
+      event.type === AIContextEventTypeEnum.CompactStart &&
+      event.requestId === requestId
+    );
+    if (!started) return;
+    dispatch({
+      type: "SHOW_COMMAND_STATUS_OVERLAY",
+      commandType: "compact",
+      phase: "pending",
+      text: text.compact.compacting || text.compact.pending,
+    });
+  }, [dispatch, state.events, submittingCommand, text.compact.compacting, text.compact.pending]);
 
   const scheduleCommandStatusOverlayHide = useCallback(() => {
     const timer = window.setTimeout(() => {
@@ -335,20 +400,35 @@ export function useBackgroundCommandActions(input: {
         return;
       }
 
+      if (commandType === "compact" && pendingCompactChats.has(chatId)) {
+        return;
+      }
+
       submittingCommandRef.current = commandType;
       setSubmittingCommand(commandType);
+      const requestId = createRequestId(commandType);
+      if (commandType === "compact") {
+        pendingCompactChats.add(chatId);
+        activeCompactRequestIdRef.current = requestId;
+      }
       try {
         await runBackgroundCommand({
           chatId,
           commandType,
           dispatch,
           events: state.events,
+          getEvents: () => eventsRef.current,
+          requestId,
           scheduleCommandStatusOverlayHide,
           t,
           texts: text[commandType],
           usageSnapshot: state.usageSnapshot,
         });
       } finally {
+        if (commandType === "compact") {
+          pendingCompactChats.delete(chatId);
+          activeCompactRequestIdRef.current = "";
+        }
         submittingCommandRef.current = null;
         setSubmittingCommand(null);
       }

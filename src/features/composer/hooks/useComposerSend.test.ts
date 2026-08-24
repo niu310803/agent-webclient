@@ -296,6 +296,68 @@ describe('runBackgroundCommand compact behavior', () => {
     expect(scheduleCommandStatusOverlayHide).toHaveBeenCalledTimes(1);
   });
 
+  it('does not synthesize a duplicate completion when the stream already delivered it', async () => {
+    const compactData = {
+      accepted: true,
+      status: 'completed',
+      requestId: 'compact_request',
+      chatId: 'chat-1',
+      runId: 'run-active',
+      compactId: 'compact-live-1',
+      trigger: 'manual',
+      scope: 'run',
+      level: 'summary',
+      summarySource: 'model',
+      postCompactEstimatedTokens: 3200,
+    } as const;
+    compactChatMock.mockResolvedValue({ data: compactData });
+    const streamedComplete = {
+      type: 'context.compact.complete',
+      requestId: 'compact_request',
+      chatId: 'chat-1',
+      runId: 'run-active',
+      compactId: 'compact-live-1',
+    };
+    const dispatch = jest.fn();
+
+    await runBackgroundCommand({
+      chatId: 'chat-1',
+      commandType: 'compact',
+      dispatch,
+      events: [],
+      getEvents: () => [streamedComplete],
+      requestId: 'compact_request',
+      scheduleCommandStatusOverlayHide: jest.fn(),
+      t: testT,
+      texts: {
+        pending: 'Compacting context...',
+        waiting: 'Waiting for the current step...',
+        error: 'Context compaction failed',
+      },
+      usageSnapshot: null,
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SHOW_COMMAND_STATUS_OVERLAY',
+      commandType: 'compact',
+      phase: 'pending',
+      text: 'Waiting for the current step...',
+    });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'PUSH_EVENT',
+    }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'SET_TIMELINE_NODE',
+    }));
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SET_USAGE_SNAPSHOT',
+      snapshot: expect.objectContaining({
+        chatId: 'chat-1',
+        contextWindow: expect.objectContaining({ currentSize: 3200 }),
+      }),
+    });
+  });
+
   it('writes a compact timeline node without usage updates when compact is skipped', async () => {
     compactChatMock.mockResolvedValue({
       data: {

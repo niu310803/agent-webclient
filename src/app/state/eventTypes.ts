@@ -438,6 +438,10 @@ export interface AIUsageSnapshotEvent extends AIBaseEvent {
 export interface AIContextCompactEvent extends AIBaseEvent {
   type: AIContextEventTypeEnum;
   compactId?: string;
+  trigger?: string;
+  scope?: "history" | "run";
+  retryable?: boolean;
+  detail?: string;
   level?: "summary" | "l1_tools";
   summarySource?: string;
   toolsCleared?: number;

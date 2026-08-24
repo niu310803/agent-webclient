@@ -255,6 +255,17 @@ describe('processStreamEvent', () => {
       text: expect.stringContaining('44%'),
       ts: 123,
     });
+
+    const duplicateCommands = processAndApply(state, {
+      type: 'context.compact.complete',
+      chatId: 'chat-1',
+      compactId: 'compact-1',
+      level: 'summary',
+      timestamp: 124,
+    }, 'live', false);
+
+    expect(duplicateCommands).toEqual([]);
+    expect(state.timelineOrder).toEqual(['compact_compact-1']);
   });
 
   it('creates request.query user nodes only during replay', () => {

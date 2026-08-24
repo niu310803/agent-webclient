@@ -458,7 +458,7 @@ describe("TopNav", () => {
 		expect(compactIndex).toBeGreaterThan(contextValueIndex);
 	});
 
-	it("disables the compact action without an active chat or while streaming", () => {
+	it("disables compact without a chat but keeps it available for a native active run", () => {
 		const state = createInitialState();
 		const usageSnapshot = {
 			type: "usage.snapshot" as const,
@@ -526,7 +526,8 @@ describe("TopNav", () => {
 		const streamingHtml = renderToStaticMarkup(React.createElement(TopNav));
 
 		expect(missingChatHtml).toMatch(/usage-context-compact-btn[^>]*disabled/);
-		expect(streamingHtml).toMatch(/usage-context-compact-btn[^>]*disabled/);
+		expect(streamingHtml).toMatch(/usage-context-compact-btn/);
+		expect(streamingHtml).not.toMatch(/usage-context-compact-btn[^>]*disabled/);
 	});
 
 	it("renders an empty cache hit rate in the usage popover when chat cache tokens are zero or missing", () => {

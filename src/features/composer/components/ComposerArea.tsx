@@ -31,6 +31,7 @@ import { ComposerWonders } from "@/features/composer/components/ComposerWonders"
 import {
   isDedicatedKbaseWorker,
   resolveCurrentWorkerSummary,
+  supportsActiveRunContextCompact,
 } from "@/features/workers/lib/currentWorker";
 import type { ComposerRequiredSkill } from "@/features/composer/lib/composerAttachments";
 import {
@@ -424,6 +425,11 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
         Boolean(state.usageSnapshot) ||
         isMainChatRunning ||
         resolveHasCompactUsage(state.events),
+      canCompactActiveRun: supportsActiveRunContextCompact(currentWorker),
+      compactPending:
+        state.commandStatusOverlay.visible &&
+        state.commandStatusOverlay.commandType === "compact" &&
+        state.commandStatusOverlay.phase === "pending",
     }),
     [
       currentWorker,
@@ -433,6 +439,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
       isMainChatRunning,
       state.usageSnapshot,
       state.events,
+      state.commandStatusOverlay,
       isAnyOverlayOpen,
       voiceModeAvailable,
       planningModeAvailable,
@@ -458,6 +465,8 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
       learnError: t("composer.background.learn.error"),
       compactPending: t("composer.background.compact.pending"),
       compactError: t("composer.background.compact.error"),
+      compactWaiting: t("composer.background.compact.waiting"),
+      compactCompacting: t("composer.background.compact.compacting"),
     },
     clearComposerAttachments,
     clearMustUseSkills: () => setSelectedSkills([]),

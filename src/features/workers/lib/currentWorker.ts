@@ -177,6 +177,21 @@ export function isDedicatedKbaseWorker(
   );
 }
 
+export function supportsActiveRunContextCompact(
+  worker: CurrentWorkerSummary | null | undefined,
+): boolean {
+  if (!worker || worker.type === "team") return true;
+  const mode = toText(worker.raw?.mode).toUpperCase().replace(/-/g, "_");
+  if (mode === "PROXY" || mode === "CHANNEL" || mode === "ACP_PROXY") {
+    return false;
+  }
+  const definition = worker.raw?.definition as Record<string, unknown> | undefined;
+  const runtimeConfig = (definition?.runtimeConfig || worker.raw?.runtimeConfig) as
+    | Record<string, unknown>
+    | undefined;
+  return !toText(runtimeConfig?.acpBridgeId);
+}
+
 export function resolveCurrentWorkerSummary(
   state: Pick<
     AppState,

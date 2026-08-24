@@ -70,6 +70,8 @@ export function processRunEvent(
 
   if (type === "context.compact.complete") {
     const compactId = toText(event.compactId) || String(config.mode === "replay" ? state.nextCounter() : Date.now());
+    const nodeId = `compact_${compactId}`;
+    if (state.getTimelineNode(nodeId)) return commands;
     const source = toText(event.summarySource) || "unknown";
     const digestCount = Number((event as Record<string, unknown>).toolDigestCount ?? 0);
     const originalMessages = Number((event as Record<string, unknown>).originalMessages ?? 0);
@@ -102,7 +104,7 @@ export function processRunEvent(
     }
     commands.push({
       cmd: "SYSTEM_MESSAGE",
-      nodeId: `compact_${compactId}`,
+      nodeId,
       text: textParts.join(" · "),
       ts: timestamp,
     });
@@ -110,16 +112,24 @@ export function processRunEvent(
   }
 
   if (type === "context.compact.failed") {
+    const compactId = toText(event.compactId) || String(config.mode === "replay" ? state.nextCounter() : Date.now());
+    const nodeId = `compact_failed_${compactId}`;
+    if (state.getTimelineNode(nodeId)) return commands;
     commands.push({
       cmd: "SYSTEM_ERROR",
-      nodeId: `compact_failed_${config.mode === "replay" ? state.nextCounter() : Date.now()}`,
+      nodeId,
       text: t("contextCompact.failed", {
         detail:
+          safeText((event as Record<string, unknown>).detail) ||
           safeText((event as Record<string, unknown>).error) ||
           t("contextCompact.unknownError"),
       }),
       ts: timestamp,
     });
+    return commands;
+  }
+
+  if (type === "context.compact.start") {
     return commands;
   }
 

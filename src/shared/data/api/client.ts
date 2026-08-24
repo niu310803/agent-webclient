@@ -2936,6 +2936,10 @@ export interface CompactChatResponse {
   requestId?: string;
   chatId: string;
   compactId?: string;
+  runId?: string;
+  trigger?: string;
+  scope?: "history" | "run";
+  retryable?: boolean;
   level?: "summary" | "l1_tools";
   summarySource?: string;
   preCompactEstimatedTokens?: number;

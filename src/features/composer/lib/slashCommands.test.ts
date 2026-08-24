@@ -220,6 +220,32 @@ describe('slashCommands', () => {
     })).toBe(true);
   });
 
+  it('keeps compact enabled during supported runs and blocks unsupported or duplicate requests', () => {
+    const availability = {
+      streaming: true,
+      hasLatestQuery: true,
+      isFrontendActive: false,
+      canUsePlanningMode: true,
+      canUseVoiceMode: true,
+      hasActiveChat: true,
+      hasCurrentWorker: true,
+      workerHistoryCount: 1,
+      commandOverlayOpen: false,
+      canShowUsage: true,
+      canCompactActiveRun: true,
+      compactPending: false,
+    };
+    expect(isSlashCommandDisabled('compact', availability)).toBe(false);
+    expect(isSlashCommandDisabled('compact', {
+      ...availability,
+      canCompactActiveRun: false,
+    })).toBe(true);
+    expect(isSlashCommandDisabled('compact', {
+      ...availability,
+      compactPending: true,
+    })).toBe(true);
+  });
+
   it('enables the editing command only for an idle KBASE worker', () => {
     const availability = {
       streaming: false,

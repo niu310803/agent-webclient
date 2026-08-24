@@ -134,6 +134,7 @@ jest.mock("@/features/composer/components/ComposerWonders", () => ({
 jest.mock("@/features/workers/lib/currentWorker", () => ({
   resolveCurrentWorkerSummary: () => mockResolveCurrentWorkerSummary(),
   isDedicatedKbaseWorker: () => mockIsDedicatedKbaseWorker(),
+  supportsActiveRunContextCompact: () => true,
   buildCurrentWorkerDetailView: () => ({ skills: [] }),
 }));
 

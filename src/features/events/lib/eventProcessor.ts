@@ -34,6 +34,7 @@ export function processStreamEvent(
 		type === "run.error" ||
 		type === "run.complete" ||
 		type === "run.cancel" ||
+		type === "context.compact.start" ||
 		type === "context.compact.complete" ||
 		type === "context.compact.failed"
 	) {

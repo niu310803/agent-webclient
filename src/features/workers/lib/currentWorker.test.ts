@@ -7,6 +7,7 @@ import {
   buildWorkerSwitchRows,
   isDedicatedKbaseWorker,
   resolveCurrentWorkerSummary,
+  supportsActiveRunContextCompact,
 } from '@/features/workers/lib/currentWorker';
 
 function createWorkerRow(partial: Partial<WorkerRow> & Pick<WorkerRow, 'key' | 'type' | 'sourceId' | 'displayName' | 'role'>): WorkerRow {
@@ -171,6 +172,40 @@ describe('currentWorker helpers', () => {
     expect(isDedicatedKbaseWorker(kbase)).toBe(true);
     expect(isDedicatedKbaseWorker(coderWithCapability)).toBe(false);
     expect(isDedicatedKbaseWorker(null)).toBe(false);
+  });
+
+  it('allows active compact only for native root workers', () => {
+    const row = createWorkerRow({
+      key: 'agent:alice',
+      type: 'agent',
+      sourceId: 'alice',
+      displayName: 'Alice',
+      role: 'Analyst',
+    });
+    const native = resolveCurrentWorkerSummary(
+      createState({
+        workerSelectionKey: row.key,
+        workerRows: [row],
+        workerIndexByKey: new Map([[row.key, row]]),
+        agents: [{ key: 'alice', name: 'Alice', mode: 'CODER' }],
+      }),
+    );
+    const proxy = native && {
+      ...native,
+      raw: { ...(native.raw || {}), mode: 'PROXY' },
+    };
+    const acp = native && {
+      ...native,
+      raw: {
+        ...(native.raw || {}),
+        definition: { runtimeConfig: { acpBridgeId: 'bridge-1' } },
+      },
+    };
+
+    expect(supportsActiveRunContextCompact(native)).toBe(true);
+    expect(supportsActiveRunContextCompact(proxy)).toBe(false);
+    expect(supportsActiveRunContextCompact(acp)).toBe(false);
+    expect(supportsActiveRunContextCompact(null)).toBe(true);
   });
 
   it('builds an automation draft with worker context baked in', () => {
