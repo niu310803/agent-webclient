@@ -53,7 +53,9 @@ export function processReasoningEvent(
       ? `${state.getNodeText(nodeId)}${delta}`
       : eventText || delta;
     const startedAt =
-      type === "reasoning.start" ? Date.now() : existing?.startedAt;
+      type === "reasoning.start"
+        ? event.timestamp ?? Date.now()
+        : existing?.startedAt;
 
     commands.push({
       cmd: "SET_TIMELINE_NODE",

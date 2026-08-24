@@ -597,6 +597,41 @@ describe('processStreamEvent', () => {
     expect(node?.reasoningLabel).toBe('分析问题');
   });
 
+  it('uses the reasoning.start event timestamp as the node start time', () => {
+    const state = createState();
+    const startedAt = 1_787_538_153_749;
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(startedAt + 60_000);
+
+    try {
+      processAndApply(state, {
+        type: 'reasoning.start',
+        reasoningId: 'reasoning_timestamp',
+        timestamp: startedAt,
+      }, 'live', false);
+
+      expect(state.timelineNodes.get('thinking_0')?.startedAt).toBe(startedAt);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('falls back to the current time when reasoning.start has no timestamp', () => {
+    const state = createState();
+    const receivedAt = 1_787_538_213_749;
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(receivedAt);
+
+    try {
+      processAndApply(state, {
+        type: 'reasoning.start',
+        reasoningId: 'reasoning_without_timestamp',
+      }, 'live', false);
+
+      expect(state.timelineNodes.get('thinking_0')?.startedAt).toBe(receivedAt);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('creates timeline nodes for streamed planning events', () => {
     const state = createState();
 
