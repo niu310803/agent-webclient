@@ -183,6 +183,8 @@ export function createInitialState(): AppState {
 		voiceChat: createInitialVoiceChatState(),
 		composerDraft: restoredDrafts?.composerDraft || "",
 		composerDraftByChatId: restoredDrafts?.composerDraftByChatId || {},
+		selectedSkills: [],
+		selectedSkillsByChatId: {},
 		pendingSteers: {},
 		downvotedRunKeys: new Set(),
 		eventPopoverIndex: -1,

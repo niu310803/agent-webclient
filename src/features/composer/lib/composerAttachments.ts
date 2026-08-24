@@ -40,10 +40,7 @@ export interface ComposerContextReferenceInput {
 	meta?: Record<string, unknown>;
 }
 
-export interface ComposerRequiredSkill {
-	key: string;
-	label: string;
-}
+export type { ComposerRequiredSkill } from "@/app/state/types";
 
 export function createComposerContextAttachment(
 	reference: ComposerContextReferenceInput,

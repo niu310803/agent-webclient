@@ -277,3 +277,49 @@ describe("reduceConversationState – composerDraftByChatId", () => {
 		expect(next.composerDraftByChatId[""]).toBe("blank_draft");
 	});
 });
+
+describe("reduceConversationState – selectedSkillsByChatId", () => {
+	it("switching chat saves current selectedSkills and restores saved skills", () => {
+		const skillsA = [{ key: "a", label: "A" }];
+		const skillsB = [{ key: "b", label: "B" }];
+		const state = buildState({
+			chatId: "chat_a",
+			selectedSkills: skillsA,
+			selectedSkillsByChatId: { chat_b: skillsB },
+		});
+		const next = appReducer(state, {
+			type: "SET_CHAT_ID",
+			chatId: "chat_b",
+		});
+		expect(next.selectedSkills).toBe(skillsB);
+		expect(next.selectedSkillsByChatId.chat_a).toBe(skillsA);
+	});
+
+	it("new chat with no saved skills gets empty array", () => {
+		const state = buildState({
+			chatId: "chat_a",
+			selectedSkills: [{ key: "a", label: "A" }],
+			selectedSkillsByChatId: {},
+		});
+		const next = appReducer(state, {
+			type: "SET_CHAT_ID",
+			chatId: "chat_new",
+		});
+		expect(next.selectedSkills).toEqual([]);
+	});
+
+	it("SET_SELECTED_SKILLS also writes to selectedSkillsByChatId", () => {
+		const skills = [{ key: "a", label: "A" }];
+		const state = buildState({
+			chatId: "chat_x",
+			selectedSkills: [],
+			selectedSkillsByChatId: {},
+		});
+		const next = appReducer(state, {
+			type: "SET_SELECTED_SKILLS",
+			skills,
+		});
+		expect(next.selectedSkills).toBe(skills);
+		expect(next.selectedSkillsByChatId.chat_x).toBe(skills);
+	});
+});

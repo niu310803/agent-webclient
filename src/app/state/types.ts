@@ -110,6 +110,11 @@ export type * from "@/app/state/voiceTypes";
 export type * from "@/app/state/navigationTypes";
 export type * from "@/app/state/uiTypes";
 
+export interface ComposerRequiredSkill {
+	key: string;
+	label: string;
+}
+
 export interface AppState {
 	agents: Agent[];
 	teams: Team[];
@@ -241,6 +246,8 @@ export interface AppState {
 	voiceChat: VoiceChatState;
 	composerDraft: string;
 	composerDraftByChatId: Record<string, string>;
+	selectedSkills: ComposerRequiredSkill[];
+	selectedSkillsByChatId: Record<string, ComposerRequiredSkill[]>;
 	pendingSteers: Record<string, PendingSteer[]>;
 	downvotedRunKeys: Set<string>;
 	eventPopoverIndex: number;

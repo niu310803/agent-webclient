@@ -107,6 +107,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
   const [accessLevel, setAccessLevel] = useState<QueryAccessLevel>("default");
   const [modelOverride, setModelOverride] = useState<QueryModelOverride>({});
   const isRestoringDraftRef = useRef(false);
+  const isRestoringSkillsRef = useRef(false);
 
   // Restore: 当 state.composerDraft 被 reducer 更改（SET_CHAT_ID 恢复草稿）时，同步到 inputValue
   useEffect(() => {
@@ -143,9 +144,25 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
   const [selectedSkills, setSelectedSkills] = useState<ComposerRequiredSkill[]>(
     [],
   );
+
+  // Restore: 当 state.selectedSkills 被 reducer 更改（SET_CHAT_ID 恢复）时，同步到局部
   useEffect(() => {
-    setSelectedSkills([]);
-  }, [currentWorker?.key]);
+    if (state.selectedSkills !== selectedSkills) {
+      isRestoringSkillsRef.current = true;
+      setSelectedSkills(state.selectedSkills);
+    }
+  }, [state.selectedSkills]);
+
+  useEffect(() => {
+    if (state.selectedSkills === selectedSkills) {
+      return;
+    }
+    if (isRestoringSkillsRef.current) {
+      isRestoringSkillsRef.current = false;
+      return; // 这是 restore 触发的，不写回 reducer
+    }
+    dispatch({ type: "SET_SELECTED_SKILLS", skills: selectedSkills });
+  }, [dispatch, selectedSkills, state.selectedSkills]);
   const { activeRunId, activeRunOwner } = useActiveRunIdentity(state);
   const voiceModeAvailable = voiceEnabled && currentWorker?.type === "agent";
   const mainChatRuntime = resolveMainChatRuntime(

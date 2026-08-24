@@ -6,6 +6,7 @@ import type {
 	AgentEvent,
 	AppState,
 	Chat,
+	ComposerRequiredSkill,
 	CurrentChatActiveRun,
 	Message,
 	PendingSteer,
@@ -193,6 +194,7 @@ export type AppAction =
 	| { type: "PATCH_VOICE_CHAT"; patch: Partial<VoiceChatState> }
 	| { type: "SET_PLAN_AUTO_COLLAPSE_TIMER"; timer: UiTimerHandle | null }
 	| { type: "SET_COMPOSER_DRAFT"; draft: string }
+	| { type: "SET_SELECTED_SKILLS"; skills: ComposerRequiredSkill[] }
 	| { type: "ENQUEUE_PENDING_STEER"; steer: PendingSteer }
 	| { type: "UPDATE_PENDING_STEER_STATUS"; steerId: string; status: PendingSteer['status'] }
 	| { type: "REMOVE_PENDING_STEER"; steerId: string }

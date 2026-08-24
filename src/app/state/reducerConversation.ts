@@ -56,6 +56,17 @@ export function reduceConversationState(
 			// Restore draft for new chat
 			const nextComposerDraft = nextDraftByChatId[action.chatId] ?? "";
 
+			// Save current selected skills for old chat
+			let nextSkillsByChatId = state.selectedSkillsByChatId;
+			if (state.chatId !== action.chatId) {
+				nextSkillsByChatId = {
+					...nextSkillsByChatId,
+					[state.chatId]: state.selectedSkills,
+				};
+			}
+			// Restore selected skills for new chat
+			const nextSelectedSkills = nextSkillsByChatId[action.chatId] ?? [];
+
 			return {
 				...state,
 				chatId: action.chatId,
@@ -68,6 +79,8 @@ export function reduceConversationState(
 				editingMode: isNewChatId ? false : state.editingMode,
 				composerDraft: nextComposerDraft,
 				composerDraftByChatId: nextDraftByChatId,
+				selectedSkills: nextSelectedSkills,
+				selectedSkillsByChatId: nextSkillsByChatId,
 			};
 		}
 		case "SET_CURRENT_CHAT_ACTIVE_RUN": {
@@ -209,6 +222,17 @@ export function reduceConversationState(
 				...state,
 				composerDraft: action.draft,
 				composerDraftByChatId: { ...composerDraftByChatId, [chatId]: action.draft },
+			};
+		}
+		case "SET_SELECTED_SKILLS": {
+			const { chatId, selectedSkillsByChatId } = state;
+			return {
+				...state,
+				selectedSkills: action.skills,
+				selectedSkillsByChatId: {
+					...selectedSkillsByChatId,
+					[chatId]: action.skills,
+				},
 			};
 		}
 		case "ENQUEUE_PENDING_STEER": {
