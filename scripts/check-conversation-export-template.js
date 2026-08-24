@@ -88,9 +88,10 @@ assert(
   "Export profile must appear exactly once.",
 );
 assert(
-  html.includes(
-    `<meta\n      name="conversation-export-asset-set"\n      content="${manifest.assetSet}"`,
-  ),
+  new RegExp(
+    `<meta\\s+name=["']conversation-export-asset-set["']\\s+content=["']${manifest.assetSet}["']\\s*/?>`,
+    "u",
+  ).test(html),
   "Export template asset-set declaration does not match the manifest.",
 );
 assert(!/<style\b/iu.test(html), "Export template contains an inline style element.");
