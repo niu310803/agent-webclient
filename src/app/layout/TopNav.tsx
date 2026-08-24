@@ -139,6 +139,7 @@ const USAGE_POPOVER_HEADER_CLASS =
   "usage-popover-header tw:mb-1 tw:flex tw:items-center tw:justify-between tw:gap-3 tw:[&_span]:max-w-[340px] tw:[&_span]:overflow-hidden tw:[&_span]:text-ellipsis tw:[&_span]:whitespace-nowrap tw:[&_span]:text-[10px] tw:[&_span]:font-medium tw:[&_span]:leading-[1.15] tw:[&_span]:text-ink-muted tw:[&_strong]:text-[11px] tw:[&_strong]:leading-[1.15]";
 const USAGE_POPOVER_CLOSE_CLASS =
   "usage-popover-close tw:h-5 tw:min-h-5 tw:w-5 tw:min-w-5 tw:rounded-[7px] tw:p-0";
+const USAGE_POPOVER_COMPACT_QUERY = "(max-width: 620px)";
 
 export function resolveTopNavStatus(
   state: Pick<AppState, "events"> & Partial<Pick<AppState, "streaming">>,
@@ -652,6 +653,23 @@ export const TopNav: React.FC<{ surface?: "root" | "agent" }> = ({
       /Mac|iPhone|iPad|iPod/.test(navigator.platform),
     [],
   );
+  const [isCompactTopNav, setIsCompactTopNav] = React.useState<boolean>(() =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(USAGE_POPOVER_COMPACT_QUERY).matches
+      : false,
+  );
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+      return;
+    const mediaQuery = window.matchMedia(USAGE_POPOVER_COMPACT_QUERY);
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsCompactTopNav(event.matches);
+    };
+    setIsCompactTopNav(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
   const voiceOpenShortcutLabel = isMacPlatform ? "⌘⇧Space" : "Ctrl+Shift+Space";
   const voiceOpenAriaShortcut = isMacPlatform
     ? "Meta+Shift+Space"
@@ -851,7 +869,7 @@ export const TopNav: React.FC<{ surface?: "root" | "agent" }> = ({
               <Popover
                 open={state.usagePopoverOpen}
                 trigger="click"
-                placement="bottomRight"
+                placement={isCompactTopNav ? "bottom" : "bottomRight"}
                 arrow={false}
                 classNames={{ root: USAGE_POPOVER_ROOT_CLASS }}
                 onOpenChange={handleUsagePopoverOpenChange}
