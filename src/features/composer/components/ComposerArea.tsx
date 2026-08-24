@@ -60,6 +60,7 @@ import { useI18n } from "@/shared/i18n";
 import { resolveMainChatRuntime } from "@/features/runs/lib/runRuntimeState";
 import { UiButton } from "@/shared/ui/UiButton";
 import { MaterialIcon } from "@/shared/icons/material";
+import { useHostRequiredSkills } from "@/features/composer/components/HostRequiredSkillsContext";
 
 interface ComposerAreaProps {
   emptyInputMinRows?: number;
@@ -141,9 +142,30 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     }
     return String(currentWorker.sourceId || "").trim();
   }, [currentWorker]);
+  const hostRequiredSkills = useHostRequiredSkills();
   const [selectedSkills, setSelectedSkills] = useState<ComposerRequiredSkill[]>(
     [],
   );
+  const forcedSkills = useMemo<ComposerRequiredSkill[]>(() => {
+    if (hostRequiredSkills.agentKey !== currentAgentKey) return [];
+    return hostRequiredSkills.skills.map((key) => ({ key, label: key }));
+  }, [currentAgentKey, hostRequiredSkills]);
+  const effectiveSkills = useMemo(() => {
+    const identities = new Set(forcedSkills.map((skill) => skill.key.toLowerCase()));
+    return [
+      ...forcedSkills,
+      ...selectedSkills.filter((skill) => {
+        const identity = skill.key.trim().toLowerCase();
+        if (!identity || identities.has(identity)) return false;
+        identities.add(identity);
+        return true;
+      }),
+    ];
+  }, [forcedSkills, selectedSkills]);
+  const effectiveManualSkills = useMemo(() => {
+    const forcedIdentities = new Set(forcedSkills.map((skill) => skill.key.toLowerCase()));
+    return selectedSkills.filter((skill) => !forcedIdentities.has(skill.key.trim().toLowerCase()));
+  }, [forcedSkills, selectedSkills]);
 
   // Restore: 当 state.selectedSkills 被 reducer 更改（SET_CHAT_ID 恢复）时，同步到局部
   useEffect(() => {
@@ -316,6 +338,9 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
         return;
       }
       const identity = skill.key.toLowerCase();
+      if (forcedSkills.some((item) => item.key.toLowerCase() === identity)) {
+        return;
+      }
       setSelectedSkills((current) => {
         const selected = current.some(
           (item) => item.key.trim().toLowerCase() === identity,
@@ -334,7 +359,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
         textareaRef.current?.resizableTextArea?.textArea?.focus();
       });
     },
-    [closeMention, isMainChatRunning, setSlashDismissed, filterStartIndex],
+    [closeMention, forcedSkills, isMainChatRunning, setSlashDismissed, filterStartIndex],
   );
 
   const removeSelectedSkill = useCallback((skillKey: string) => {
@@ -514,8 +539,8 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     isVoiceMode,
     mainChatRunning: isMainChatRunning,
     modelOverride,
-    mustUseSkillsAgentKey: selectedSkills.length > 0 ? currentAgentKey : "",
-    mustUseSkills: selectedSkills.map((skill) => skill.key),
+    mustUseSkillsAgentKey: effectiveSkills.length > 0 ? currentAgentKey : "",
+    mustUseSkills: effectiveSkills.map((skill) => skill.key),
     selectSlashItem,
     onSelectSlashSkill: handleSelectSlashSkill,
     sendAttachmentMeta,
@@ -775,7 +800,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
                     slashAvailability={slashAvailability}
                     planningMode={state.planningMode}
                     editingMode={state.editingMode}
-                    selectedSkillKeys={selectedSkills.map((s) => s.key)}
+                    selectedSkillKeys={effectiveSkills.map((s) => s.key)}
                     skillsDisabled={isMainChatRunning}
                     onSelectCommand={(commandId) =>
                       void executeSlashCommand(commandId)
@@ -807,7 +832,23 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
                   onScroll={scrollComposerAttachments}
                 />
                 <Flex wrap gap={4}>
-                  {selectedSkills.map((skill) => (
+                  {forcedSkills.map((skill) => (
+                    <UiButton
+                      key={`forced:${skill.key.toLowerCase()}`}
+                      variant="ghost"
+                      className="tw:!cursor-default tw:!bg-accent-soft tw:!px-[6px] tw:!py-0 tw:!min-h-[24px] tw:!rounded-[4px]"
+                      size="sm"
+                      onClick={() => openSkillViewer(skill)}
+                      aria-label={t("composer.requiredSkill.locked", { skill: skill.label })}
+                      title={t("composer.requiredSkill.locked", { skill: skill.label })}
+                    >
+                      <Flex gap={4} align="center">
+                        <MaterialIcon name="lock" className="tw:text-accent tw:text-[14px]" />
+                        <span className="tw:text-text-sub">{skill.label}</span>
+                      </Flex>
+                    </UiButton>
+                  ))}
+                  {effectiveManualSkills.map((skill) => (
                     <UiButton
                       key={skill.key.toLowerCase()}
                       variant="ghost"

@@ -458,6 +458,7 @@ export const enUSMessages = {
   "composer.addMenu.mode.editing.suffix": "Enable editing mode",
   "composer.addMenu.skills.loading": "Loading skills...",
   "composer.addMenu.skills.empty": "No available skills",
+  "composer.requiredSkill.locked": "{skill} is required by the host",
   "composer.addMenu.skill.btwUnsupported": "BTW branches do not support a required skill yet.",
   "composer.addMenu.skill.routeMismatch": "This message routes to another agent. Remove or reselect the required skill first.",
   "composer.addMenu.chat.modalTitle": "Choose a chat to reference",

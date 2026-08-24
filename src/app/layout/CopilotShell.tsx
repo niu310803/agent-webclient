@@ -31,6 +31,10 @@ import { MaterialIcon } from "@/shared/ui/MaterialIcon";
 import { UiButton } from "@/shared/ui/UiButton";
 import { getAgent } from "@/shared/data";
 import { upsertAgentSummary } from "@/features/workers/lib/agentSummary";
+import {
+  HostRequiredSkillsProvider,
+  readHostRequiredSkills,
+} from "@/features/composer/components/HostRequiredSkillsContext";
 
 const COPILOT_SHELL_CLASS =
   "app-shell layout-copilot tw:grid tw:h-[100dvh] tw:min-h-0 tw:grid-cols-[minmax(0,1fr)] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:gap-0 tw:overflow-hidden tw:bg-bg-base tw:p-0 tw:[&_.conversation-stage]:row-start-2 tw:[&_.conversation-stage]:min-w-0";
@@ -219,6 +223,10 @@ export const CopilotShell: React.FC = () => {
   const routeChatId = useMemo(
     () => normalizeRouteValue(searchParams.get("chatId")),
     [searchParams],
+  );
+  const hostRequiredSkills = useMemo(
+    () => readHostRequiredSkills(resolvedAgentKey, searchParams),
+    [resolvedAgentKey, searchParams],
   );
   const isDesktopCopilotHost =
     searchParams.get("wsSource") === "desktop-copilot";
@@ -420,8 +428,10 @@ export const CopilotShell: React.FC = () => {
           ? normalizeRouteValue(workerKey.slice("agent:".length))
           : ""
       );
+      const switchSearchParams = new URLSearchParams(searchParams);
+      switchSearchParams.delete("mustUseSkill");
       const nextPath = nextAgentKey
-        ? createCopilotChatRoute(nextAgentKey, searchParams)
+        ? createCopilotChatRoute(nextAgentKey, switchSearchParams)
         : "/copilot";
 
       if (currentCopilotRoute !== nextPath) {
@@ -433,26 +443,28 @@ export const CopilotShell: React.FC = () => {
   }, [currentCopilotRoute, navigate, searchParams]);
 
   return (
-    <SettingsOverlayProvider>
-      <CommandOverlayProvider>
-        <GlobalShortcutLayer />
-        <div
-          className={`${COPILOT_SHELL_CLASS}${
-            isDesktopCopilotHost ? " is-desktop-copilot-host" : ""
-          }`}
-          id="app"
-        >
-          <CopilotTopBar />
-          <ConversationStage showEmptyState={false} />
-          {(!requestedAgentKey || routeAgentHydratedKey === requestedAgentKey) && (
-            <BottomDock mode="copilot" />
-          )}
-          <ShellOverlays
-            commandOverlayVariant="copilot"
-            settingsOverlayVariant="copilot"
-          />
-        </div>
-      </CommandOverlayProvider>
-    </SettingsOverlayProvider>
+    <HostRequiredSkillsProvider {...hostRequiredSkills}>
+      <SettingsOverlayProvider>
+        <CommandOverlayProvider>
+          <GlobalShortcutLayer />
+          <div
+            className={`${COPILOT_SHELL_CLASS}${
+              isDesktopCopilotHost ? " is-desktop-copilot-host" : ""
+            }`}
+            id="app"
+          >
+            <CopilotTopBar />
+            <ConversationStage showEmptyState={false} />
+            {(!requestedAgentKey || routeAgentHydratedKey === requestedAgentKey) && (
+              <BottomDock mode="copilot" />
+            )}
+            <ShellOverlays
+              commandOverlayVariant="copilot"
+              settingsOverlayVariant="copilot"
+            />
+          </div>
+        </CommandOverlayProvider>
+      </SettingsOverlayProvider>
+    </HostRequiredSkillsProvider>
   );
 };

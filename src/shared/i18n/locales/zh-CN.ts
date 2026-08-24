@@ -458,6 +458,7 @@ export const zhCNMessages = {
   "composer.addMenu.mode.editing.suffix": "开启编辑模式",
   "composer.addMenu.skills.loading": "正在加载 Skills...",
   "composer.addMenu.skills.empty": "没有可用的 Skill",
+  "composer.requiredSkill.locked": "{skill} 由宿主强制启用",
   "composer.addMenu.skill.btwUnsupported": "BTW 分支暂不支持指定必须使用的 Skill。",
   "composer.addMenu.skill.routeMismatch": "消息将路由到其他智能体，请先移除或重新选择必须使用的 Skill。",
   "composer.addMenu.chat.modalTitle": "选择要引用的 Chat",
