@@ -23,6 +23,8 @@ import {
 import { serializeRunTranscript } from "@/features/timeline/lib/runTranscript";
 import { RunTerminalNotice } from "@/features/timeline/components/RunTerminalNotice";
 import { copyText } from "@/shared/utils/copy";
+import { formatResponseDuration } from "@/shared/utils/formatResponseDuration";
+import { readEpochMillis } from "@/shared/utils/platformTime";
 import { UiButton } from "@/shared/ui/UiButton";
 import { MaterialIcon } from "@/shared/ui/MaterialIcon";
 import { SCROLLBAR_THIN_CLASS_NAME } from "@/shared/styles/scrollbarClassNames";
@@ -42,7 +44,12 @@ import {
   Tooltip,
 } from "antd";
 import type { InputRef } from "antd";
-import type { Agent, TimelineNode, WorkerRow } from "@/app/state/types";
+import {
+  AIRunEventTypeEnum,
+  type Agent,
+  type TimelineNode,
+  type WorkerRow,
+} from "@/app/state/types";
 import { LogoLoading } from "@/shared/components/logo-loading";
 import { resolveMainChatRuntime } from "@/features/runs/lib/runRuntimeState";
 import { DotLoading } from "@/shared/components/dot-loading";
@@ -418,41 +425,6 @@ export function dispatchTimelineAgentSwitch(option: TimelineAgentOption): void {
   window.dispatchEvent(event);
 }
 
-function formatResponseDuration(
-  durationMs: number | undefined,
-  t: (key: string, params?: Record<string, unknown>) => string,
-): string {
-  if (!Number.isFinite(durationMs) || Number(durationMs) < 0) {
-    return "";
-  }
-
-  const value = Number(durationMs);
-  if (value < 1000) {
-    return t("timeline.toolPill.duration.milliseconds", {
-      count: Math.round(value),
-    });
-  }
-  if (value < 60_000) {
-    return t("timeline.toolPill.duration.seconds", {
-      count: Number((value / 1000).toFixed(value >= 10_000 ? 0 : 1)),
-    });
-  }
-
-  const totalSeconds = Math.round(value / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes < 60) {
-    return t("timeline.toolPill.duration.minutes", { minutes, seconds });
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainMinutes = minutes % 60;
-  return t("timeline.responseDuration.hours", {
-    hours,
-    minutes: remainMinutes,
-  });
-}
-
 function formatTaskStatus(
   status: string,
   t: (key: string, params?: Record<string, unknown>) => string,
@@ -488,6 +460,33 @@ function resolveTaskGroupAgent(
     }
   );
 }
+
+const RunElapsedTime: React.FC<{ startTimeMs: number | null }> = ({
+  startTimeMs,
+}) => {
+  const { t } = useI18n();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (startTimeMs == null) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [startTimeMs]);
+
+  if (startTimeMs == null)
+    return <div>{t("conversationStage.scrollToBottom")}</div>;
+
+  const duration = formatResponseDuration(Math.max(0, now - startTimeMs), t);
+  return (
+    <Flex vertical align="center">
+      <div>{t("conversationStage.scrollToBottom")}</div>
+      <div className="tw:text-xs tw:text-text-muted">
+        {t("timeline.run.processed", { duration })}
+      </div>
+    </Flex>
+  );
+};
 
 export const TimelineAgentSwitcher: React.FC<{
   currentWorker: CurrentWorkerSummary;
@@ -694,6 +693,7 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
         appContext.querySessionsRef,
       ).running
     : false;
+
   useEffect(() => {
     return () => {
       setIsAtBottom(true);
@@ -732,6 +732,15 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       state.taskItemsById,
     );
   }, [timelineEntries, state.events, state.taskItemsById]);
+
+  const runStartedAt = useMemo(() => {
+    if (!isMainChatRunning && !state.streaming) return null;
+    const lastQuery = displayItems?.findLast((event) => event.kind === "query");
+    if (!lastQuery) return null;
+    const timestamp = lastQuery.node.ts;
+    if (timestamp) return readEpochMillis(timestamp) ?? null;
+    return null;
+  }, [isMainChatRunning, state.streaming, displayItems]);
 
   const queryAnchorItems = useMemo(() => {
     const anchors: Array<{
@@ -1152,26 +1161,37 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     </div>
   );
 
-  const Footer = useCallback(
-    () =>
-      !isAtBottom || isMainChatRunning || state.streaming ? (
-        <Tooltip title={t("conversationStage.scrollToBottom")} placement="top">
-          <UiButton
-            className={CONVERSATION_STAGE_SCROLL_TO_BOTTOM_CLASS_NAME}
-            iconOnly
-            size="sm"
-            onClick={handleScrollToBottomClick}
-          >
-            {isMainChatRunning || state.streaming ? (
-              <DotLoading color="primary" height={15} />
-            ) : (
-              <MaterialIcon name="arrow_downward" />
-            )}
-          </UiButton>
-        </Tooltip>
-      ) : null,
-    [isAtBottom, isMainChatRunning, state.streaming],
-  );
+  const Footer = useCallback(() => {
+    const running = isMainChatRunning || state.streaming;
+    if (isAtBottom && !running) {
+      return null;
+    }
+    return (
+      <Tooltip
+        title={
+          running ? (
+            <RunElapsedTime startTimeMs={runStartedAt} />
+          ) : (
+            t("conversationStage.scrollToBottom")
+          )
+        }
+        placement="top"
+      >
+        <UiButton
+          className={CONVERSATION_STAGE_SCROLL_TO_BOTTOM_CLASS_NAME}
+          iconOnly
+          size="sm"
+          onClick={handleScrollToBottomClick}
+        >
+          {running ? (
+            <DotLoading color="primary" height={15} />
+          ) : (
+            <MaterialIcon name="arrow_downward" />
+          )}
+        </UiButton>
+      </Tooltip>
+    );
+  }, [isAtBottom, isMainChatRunning, runStartedAt, state.streaming]);
 
   return (
     <div className={CONVERSATION_STAGE_CLASS_NAME} ref={containerRef}>
