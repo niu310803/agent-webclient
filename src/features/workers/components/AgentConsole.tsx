@@ -23,15 +23,17 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  Dropdown,
   Input,
   Modal,
+  Popover,
   Popconfirm,
   Select,
   Spin,
-  Switch,
   Tabs,
   Tooltip,
   message,
+  type MenuProps,
 } from "antd";
 import { useAppContext } from "@/app/state/AppContext";
 import type { Agent } from "@/app/state/types";
@@ -66,6 +68,9 @@ import type {
   AgentEditorModelOption,
   AgentEditorOptionsResponse,
   AdminSourceResponse,
+  CoderModelOption,
+  QueryReasoningEffort,
+  ServiceTierOption,
 } from "@/shared/data";
 import {
   agentOrderPayload,
@@ -73,6 +78,7 @@ import {
   moveAgentForDrop,
 } from "@/features/workers/lib/agentOrdering";
 import { AGENT_ICON_NAMES, AgentIcon } from "@/shared/icons/agent";
+import { buildModelMenuItems } from "@/features/composer/components/QuerySettingsControls";
 import { MaterialIcon, type MaterialIconName } from "@/shared/ui/MaterialIcon";
 import { UiButton } from "@/shared/ui/UiButton";
 import { useI18n, type I18nContextValue } from "@/shared/i18n";
@@ -84,6 +90,12 @@ type AgentInteractionMode = "view" | "edit";
 type IconKind = "none" | "builtin" | "image";
 type AgentToolFilter = "all" | "file" | "desktop" | "system";
 type Translate = I18nContextValue["t"];
+
+export function initialAgentInteractionMode(
+  formMode: AgentFormMode,
+): AgentInteractionMode {
+  return formMode === "edit" ? "view" : "edit";
+}
 type EditableAgentDetail = AgentDetailResponse | AdminAgentDetailResponse;
 
 type ChoicePresentation = {
@@ -101,6 +113,7 @@ export type AgentToolOption = {
 type AgentSkillOption = {
   key: string;
   label: string;
+  description?: string;
   source: "center" | "private";
   overridesCenter?: boolean;
 };
@@ -115,6 +128,7 @@ interface AgentFormState {
   description: string;
   mode: string;
   modelKey: string;
+  serviceTier: string;
   reasoningConfigured: boolean;
   reasoningEnabled: boolean;
   reasoningEffort: string;
@@ -164,6 +178,7 @@ const EMPTY_FORM: AgentFormState = {
   description: "",
   mode: "REACT",
   modelKey: "",
+  serviceTier: "STANDARD",
   reasoningConfigured: false,
   reasoningEnabled: false,
   reasoningEffort: "",
@@ -195,6 +210,10 @@ const BUDGET_PLACEHOLDER = `{
   "model": { "maxCalls": 240 },
   "tool": { "maxCalls": 200 }
 }`;
+const SIMPLE_BUDGET_TEMPLATE = `{
+  "runTimeoutMs": 600000,
+  "maxSteps": 120
+}`;
 const DEFAULT_REASONING_EFFORTS = [...ACTIVE_QUERY_REASONING_EFFORTS];
 
 function toText(value: unknown): string {
@@ -209,6 +228,12 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function normalizeReasoningEffort(value: unknown): string {
   return normalizeQueryReasoningEffort(value) || "";
+}
+
+function normalizeServiceTier(value: unknown): string {
+  const tier = toText(value).toUpperCase();
+  if (!tier || tier === "DEFAULT" || tier === "AUTO") return "STANDARD";
+  return tier === "PRIORITY" ? "FAST" : tier;
 }
 
 export function getModelReasoningEfforts(
@@ -234,13 +259,6 @@ export function getModelReasoningEfforts(
 
 export function defaultReasoningEffort(efforts: string[]): string {
   return efforts.includes("MEDIUM") ? "MEDIUM" : efforts[0] || "";
-}
-
-function formatContextWindow(value: unknown): string {
-  const contextWindow = Number(value);
-  if (!Number.isFinite(contextWindow) || contextWindow <= 0) return "";
-  if (contextWindow >= 1000) return `${Math.round(contextWindow / 1000)}K`;
-  return String(contextWindow);
 }
 
 function reasoningEffortLabel(effort: string, t: Translate): string {
@@ -394,7 +412,7 @@ function agentSkillDisplayName(label: string, key: string): string {
 }
 
 export function mergeAgentSkillOptions(
-  centerSkills: Array<{ key: string; label: string }>,
+  centerSkills: Array<{ key: string; label: string; description?: string }>,
   privateSkills: AdminAgentPrivateSkill[],
   selectedSkills: string[],
   t: Translate,
@@ -406,6 +424,7 @@ export function mergeAgentSkillOptions(
     entries.set(key.toLowerCase(), {
       key,
       label: item.label || key,
+      description: item.description,
       source: "center",
     });
   }
@@ -416,6 +435,7 @@ export function mergeAgentSkillOptions(
     entries.set(key.toLowerCase(), {
       key,
       label: toText(item.name) || key,
+      description: toText(item.description) || undefined,
       source: "private",
       overridesCenter: item.overridesCenter || centerExists,
     });
@@ -521,15 +541,11 @@ function modePresentation(
 ): ChoicePresentation {
   switch (normalizeModeForForm(mode)) {
     case "REACT":
-      return { icon: "psychology", label: t("agentConsole.mode.react.label"), description: t("agentConsole.mode.react.description") };
-    case "PLAN_EXECUTE":
-      return { icon: "checklist", label: t("agentConsole.mode.planExecute.label"), description: t("agentConsole.mode.planExecute.description") };
+      return { icon: "refresh", label: t("agentConsole.mode.react.label"), description: t("agentConsole.mode.react.description") };
     case "CODER":
-      return { icon: "terminal", label: t("agentConsole.mode.coder.label"), description: t("agentConsole.mode.coder.description") };
-    case "CHANNEL":
-      return { icon: "hub", label: t("agentConsole.mode.channel.label"), description: t("agentConsole.mode.channel.description") };
-    case "PROXY":
-      return { icon: "sync_alt", label: t("agentConsole.mode.proxy.label"), description: t("agentConsole.mode.proxy.description") };
+      return { icon: "code", label: t("agentConsole.mode.coder.label"), description: t("agentConsole.mode.coder.description") };
+    case "KBASE":
+      return { icon: "book_2", label: t("agentConsole.mode.kbase.label"), description: t("agentConsole.mode.kbase.description") };
     default:
       return { icon: "settings", label: fallbackLabel || mode, description: t("agentConsole.mode.custom.description") };
   }
@@ -725,6 +741,7 @@ export function formFromDetail(detail: EditableAgentDetail): AgentFormState {
     ),
     modelKey:
       toText(modelConfig.modelKey) || resolveModelKey(detail, definition),
+    serviceTier: normalizeServiceTier(modelConfig.serviceTier),
     reasoningConfigured: Object.prototype.hasOwnProperty.call(
       modelConfig,
       "reasoning",
@@ -787,6 +804,9 @@ export function buildDefinition(
       ...asRecord(definition.modelConfig),
       modelKey,
     };
+    const serviceTier = normalizeServiceTier(form.serviceTier);
+    if (serviceTier !== "STANDARD") modelConfig.serviceTier = serviceTier;
+    else delete modelConfig.serviceTier;
     if (reasoningSupported === true && form.reasoningConfigured) {
       const reasoning = { ...asRecord(modelConfig.reasoning) };
       if (form.reasoningEnabled) {
@@ -993,8 +1013,8 @@ const AGENT_SAVE_ACTIONS_CLASS_NAME =
 
 export const AGENT_FORM_SECTION_IDS = [
   "agent-section-basic",
-  "agent-section-prompts",
   "agent-section-model",
+  "agent-section-prompts",
   "agent-section-context-capabilities",
   "agent-section-advanced",
 ] as const;
@@ -1002,7 +1022,6 @@ export const AGENT_FORM_SECTION_IDS = [
 export type AgentFormSectionId = (typeof AGENT_FORM_SECTION_IDS)[number];
 
 interface AgentFormSectionProps {
-  active?: boolean;
   children: React.ReactNode;
   icon: MaterialIconName;
   id: AgentFormSectionId;
@@ -1010,7 +1029,6 @@ interface AgentFormSectionProps {
 }
 
 const AgentFormSection: React.FC<AgentFormSectionProps> = ({
-  active = false,
   children,
   icon,
   id,
@@ -1020,11 +1038,9 @@ const AgentFormSection: React.FC<AgentFormSectionProps> = ({
   return (
     <section
       id={id}
-      className={`${AGENT_FORM_SECTION_CLASS_NAME} ${active ? "is-active" : ""}`}
-      role="tabpanel"
-      aria-labelledby={`agent-tab-${id}`}
-      hidden={!active}
-      tabIndex={0}
+      className={AGENT_FORM_SECTION_CLASS_NAME}
+      aria-labelledby={titleId}
+      tabIndex={-1}
     >
       <div className={AGENT_FORM_SECTION_HEADING_CLASS_NAME}>
         <MaterialIcon name={icon} />
@@ -1559,11 +1575,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
   const [editorMode, setEditorMode] = useState<AgentEditorMode>("structured");
   const [interactionMode, setInteractionMode] =
     useState<AgentInteractionMode>("edit");
-  const [activeSectionId, setActiveSectionId] = useState<AgentFormSectionId>(
-    AGENT_FORM_SECTION_IDS[0],
-  );
   const [iconEditorOpen, setIconEditorOpen] = useState(false);
-  const [iconEditorHeight, setIconEditorHeight] = useState(0);
   const [form, setForm] = useState<AgentFormState>(createEmptyAgentForm);
   const [detail, setDetail] = useState<EditableAgentDetail | null>(null);
   const [loadingList, setLoadingList] = useState(false);
@@ -1577,8 +1589,9 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
   const [toolFilter, setToolFilter] = useState<AgentToolFilter>("all");
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [skillsExpanded, setSkillsExpanded] = useState(false);
+  const [skillSearchText, setSkillSearchText] = useState("");
   const [skillOptions, setSkillOptions] = useState<
-    Array<{ key: string; label: string }>
+    Array<{ key: string; label: string; description?: string }>
   >([]);
   const [savingForm, setSavingForm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1599,6 +1612,8 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
   const [sourceLoadedKey, setSourceLoadedKey] = useState("");
   const [sourceDirty, setSourceDirty] = useState(false);
   const [structuredDirty, setStructuredDirty] = useState(false);
+  const [activeAgentSectionId, setActiveAgentSectionId] =
+    useState<AgentFormSectionId>(AGENT_FORM_SECTION_IDS[0]);
   const didInitialSelectRef = useRef(false);
   const didBootstrapAgentsRef = useRef(false);
   const didBootstrapOptionsRef = useRef(false);
@@ -1607,8 +1622,6 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
   const sourceLoadSeqRef = useRef(0);
   const selectedAgentKeyRef = useRef(selectedAgentKey);
   const detailScrollRef = useRef<HTMLDivElement>(null);
-  const sectionNavLinksRef = useRef<HTMLDivElement>(null);
-  const iconEditorPanelRef = useRef<HTMLDivElement>(null);
   const privateSkillFileInputRef = useRef<HTMLInputElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -1629,33 +1642,18 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     [filteredAgents],
   );
 
-  const modeOptions = useMemo(
-    () =>
-      (editorOptions?.modes?.length
-        ? editorOptions.modes
-        : [
-            { key: "REACT", label: "REACT" },
-            { key: "PLAN_EXECUTE", label: "PLAN-EXECUTE" },
-            { key: "PROXY", label: "ACP-PROXY" },
-          ]
-      ).map((item) => ({
-        value: normalizeModeForForm(item.key),
-        label: item.label || item.key,
-      })),
-    [editorOptions],
-  );
-  const modelOptions = useMemo(
-    () =>
-      (editorOptions?.models || []).map((item) => {
-        const name = String(item.name || "").trim();
-        const key = String(item.key || "").trim();
-        return {
-          value: item.key,
-          label: name || (item.modelId ? key + " · " + item.modelId : key),
-        };
-      }),
-    [editorOptions],
-  );
+  const modeOptions = useMemo(() => {
+    const availableModes = new Map(
+      (editorOptions?.modes || []).map((item) => [
+        normalizeModeForForm(item.key),
+        item.label || item.key,
+      ]),
+    );
+    return ["REACT", "CODER", "KBASE"].map((value) => ({
+      value,
+      label: availableModes.get(value) || value,
+    }));
+  }, [editorOptions]);
   const selectedModelReasoningEfforts = useMemo(
     () => getModelReasoningEfforts(editorOptions?.models, form.modelKey),
     [editorOptions, form.modelKey],
@@ -1670,16 +1668,71 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
       ),
     [editorOptions, form.modelKey],
   );
-  const selectedModelContextWindow = formatContextWindow(
-    selectedModel?.contextWindow,
+  const agentModelOptions = useMemo(
+    () => (editorOptions?.models || []) as CoderModelOption[],
+    [editorOptions],
   );
-  const reasoningEffortOptions = useMemo(
+  const modelReasoningOptions = useMemo(
     () =>
-      selectedModelReasoningEfforts.map((effort) => ({
-        value: effort,
-        label: reasoningEffortLabel(effort, t),
+      selectedModelReasoningEfforts.map((key) => ({
+        key: key as QueryReasoningEffort,
+        label: reasoningEffortLabel(key, t),
       })),
     [selectedModelReasoningEfforts, t],
+  );
+  const modelServiceTierOptions = useMemo<ServiceTierOption[]>(() => {
+    const tiers = selectedModel?.serviceTiers || [];
+    const uniqueTiers = new Set(["STANDARD", ...tiers]);
+    return [...uniqueTiers].map((key) => ({ key, label: key }));
+  }, [selectedModel]);
+  const selectedModelLabel =
+    toText(selectedModel?.name) || toText(form.modelKey) ||
+    t("composer.query.model.loading");
+  const selectedReasoningLabel = form.reasoningEnabled
+    ? reasoningEffortLabel(form.reasoningEffort, t)
+    : t("agentConsole.state.disabled");
+  const selectedServiceTier = normalizeServiceTier(form.serviceTier);
+  const showFastBadge = selectedServiceTier === "FAST";
+  const queryModelButtonStateClass = loadingOptions
+    ? "is-loading tw:pointer-events-auto"
+    : "";
+  const modelItems = useMemo<MenuProps["items"]>(
+    () =>
+      buildModelMenuItems({
+        models: agentModelOptions,
+        reasoningEfforts: modelReasoningOptions,
+        serviceTiers: modelServiceTierOptions,
+        modelOverride: {
+          key: form.modelKey,
+          ...(form.reasoningEnabled
+            ? { reasoningEffort: normalizeReasoningEffort(form.reasoningEffort) as QueryReasoningEffort }
+            : {}),
+          ...(selectedServiceTier !== "STANDARD"
+            ? { serviceTier: selectedServiceTier }
+            : {}),
+        },
+        selectedModelLabel,
+        selectedModelKey: form.modelKey,
+        selectedReasoningEffort: form.reasoningEnabled
+          ? (normalizeReasoningEffort(form.reasoningEffort) as QueryReasoningEffort)
+          : undefined,
+        selectedServiceTier,
+        modelsLoading: loadingOptions,
+        status: agentModelOptions.length > 0 ? "loaded" : "empty",
+        t,
+      }),
+    [
+      agentModelOptions,
+      form.modelKey,
+      form.reasoningEffort,
+      form.reasoningEnabled,
+      loadingOptions,
+      modelReasoningOptions,
+      modelServiceTierOptions,
+      selectedModelLabel,
+      selectedServiceTier,
+      t,
+    ],
   );
   const contextTagOptions = useMemo(
     () =>
@@ -1722,20 +1775,39 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
         .includes(query);
     });
   }, [toolFilter, toolOptions, toolSearchText]);
-  const selectedToolLabels = useMemo(
+  const selectedTools = useMemo(
     () =>
-      form.tools.map(
-        (key) => toolOptions.find((tool) => tool.key === key)?.label || key,
+      form.tools.map((key) =>
+        toolOptions.find((tool) => tool.key === key) || {
+          key,
+          label: key,
+          sourceCategory: "",
+          kind: "",
+        },
       ),
     [form.tools, toolOptions],
   );
-  const selectedSkillLabels = useMemo(
+  const selectedSkills = useMemo(
     () =>
       form.skills.map(
-        (key) => agentSkillOptions.find((skill) => skill.key === key)?.label || key,
+        (key) =>
+          agentSkillOptions.find((skill) => skill.key === key) || {
+            key,
+            label: key,
+            source: "center" as const,
+          },
       ),
     [agentSkillOptions, form.skills],
   );
+  const filteredSkillOptions = useMemo(() => {
+    const query = skillSearchText.trim().toLowerCase();
+    if (!query) return agentSkillOptions;
+    return agentSkillOptions.filter((skill) =>
+      `${skill.key} ${skill.label} ${skill.description || ""}`
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [agentSkillOptions, skillSearchText]);
   const greetingEntries = useMemo(
     () => promptEntriesFromJson(form.greetingsText),
     [form.greetingsText],
@@ -1757,15 +1829,15 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
       },
       {
         id: AGENT_FORM_SECTION_IDS[1],
-        label: t("agentConsole.section.prompts"),
-      },
-      {
-        id: AGENT_FORM_SECTION_IDS[2],
         label: t("agentConsole.section.model"),
       },
       {
         id: AGENT_FORM_SECTION_IDS[3],
         label: t("agentConsole.section.capabilities"),
+      },
+      {
+        id: AGENT_FORM_SECTION_IDS[2],
+        label: t("agentConsole.section.prompts"),
       },
       {
         id: AGENT_FORM_SECTION_IDS[4],
@@ -1788,31 +1860,6 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     () => sourcePath || resolveAdminAgentSourcePath(detail),
     [detail, sourcePath],
   );
-  const selectSection = useCallback((sectionId: AgentFormSectionId) => {
-    setActiveSectionId(sectionId);
-    detailScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
-  }, []);
-
-  const handleSectionKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLButtonElement>, sectionIndex: number) => {
-      let nextIndex = sectionIndex;
-      if (event.key === "ArrowRight") nextIndex = sectionIndex + 1;
-      else if (event.key === "ArrowLeft") nextIndex = sectionIndex - 1;
-      else if (event.key === "Home") nextIndex = 0;
-      else if (event.key === "End") nextIndex = agentFormSections.length - 1;
-      else return;
-
-      event.preventDefault();
-      nextIndex =
-        (nextIndex + agentFormSections.length) % agentFormSections.length;
-      const nextSection = agentFormSections[nextIndex];
-      selectSection(nextSection.id);
-      sectionNavLinksRef.current
-        ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-        [nextIndex]?.focus();
-    },
-    [agentFormSections, selectSection],
-  );
   const canEditStructuredAgent =
     formMode === "create" || hasEditableAdminDefinition(detail);
   const isReadOnly = formMode === "edit" && interactionMode === "view";
@@ -1824,7 +1871,6 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     !isReadOnly &&
     canEditStructuredAgent &&
     toText(detail?.source?.kind).toLowerCase() === "directory" &&
-    !hasUnsavedChanges &&
     !savingForm &&
     !deleting &&
     !privateSkillImporting &&
@@ -1856,49 +1902,43 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
   }, [hasUnsavedChanges]);
 
   useEffect(() => {
-    setActiveSectionId(AGENT_FORM_SECTION_IDS[0]);
+    setActiveAgentSectionId(AGENT_FORM_SECTION_IDS[0]);
+  }, [effectiveSelectedKey, editorMode]);
+
+  useEffect(() => {
+    const root = detailScrollRef.current;
+    if (!root || editorMode !== "structured" || !canEditStructuredAgent)
+      return;
+
+    const sections = AGENT_FORM_SECTION_IDS.map((id) =>
+      root.querySelector<HTMLElement>(`#${id}`),
+    ).filter((section): section is HTMLElement => Boolean(section));
+    if (!sections.length || typeof IntersectionObserver === "undefined")
+      return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort(
+            (left, right) =>
+              left.boundingClientRect.top - right.boundingClientRect.top,
+          );
+        if (visible[0]) {
+          setActiveAgentSectionId(
+            visible[0].target.id as AgentFormSectionId,
+          );
+        }
+      },
+      { root, rootMargin: "-56px 0px -62% 0px", threshold: [0, 0.1, 0.5] },
+    );
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [canEditStructuredAgent, editorMode, form.key]);
+
+  useEffect(() => {
     setIconEditorOpen(false);
   }, [editorMode, effectiveSelectedKey, formMode]);
-
-  useEffect(() => {
-    const panel = iconEditorPanelRef.current;
-    if (!iconEditorOpen || !panel) return;
-
-    const updateHeight = () => {
-      setIconEditorHeight(Math.ceil(panel.getBoundingClientRect().height));
-    };
-    updateHeight();
-
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(panel);
-    return () => observer.disconnect();
-  }, [iconEditorOpen]);
-
-  useEffect(() => {
-    const links = sectionNavLinksRef.current;
-    const activeLink = links?.querySelector<HTMLElement>(
-      `#agent-tab-${activeSectionId}`,
-    );
-    if (!links || !activeLink) return;
-
-    const linkLeft = activeLink.offsetLeft;
-    const linkRight = linkLeft + activeLink.offsetWidth;
-    const visibleLeft = links.scrollLeft;
-    const visibleRight = visibleLeft + links.clientWidth;
-    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)")
-      .matches
-      ? "auto"
-      : "smooth";
-    if (linkLeft < visibleLeft) {
-      links.scrollTo({ left: linkLeft, behavior });
-    } else if (linkRight > visibleRight) {
-      links.scrollTo({
-        left: linkRight - links.clientWidth,
-        behavior,
-      });
-    }
-  }, [activeSectionId]);
 
   const commitAgentSelection = useCallback(
     (agentKey: string) => {
@@ -1914,7 +1954,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     sourceLoadSeqRef.current += 1;
     setFormMode("create");
     setEditorMode("structured");
-    setInteractionMode("edit");
+    setInteractionMode(initialAgentInteractionMode("create"));
     setForm(createEmptyAgentForm());
     setDetail(null);
     setSourceDraft("");
@@ -2113,9 +2153,13 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
           .map((item) => {
             const record = asRecord(item);
             const key = toText(record.key);
-            return key ? { key, label: optionLabel(record) || key } : null;
+            if (!key) return null;
+            const description = toText(record.description);
+            return description
+              ? { key, label: optionLabel(record) || key, description }
+              : { key, label: optionLabel(record) || key };
           })
-          .filter((item): item is { key: string; label: string } =>
+          .filter((item): item is { key: string; label: string; description?: string } =>
             Boolean(item),
           ),
       );
@@ -2135,7 +2179,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     sourceLoadSeqRef.current += 1;
     setLoadingDetail(true);
     setEditorMode("structured");
-    setInteractionMode("edit");
+    setInteractionMode(initialAgentInteractionMode("edit"));
     setSourceDraft("");
     setSourceSha256("");
     setSourcePath("");
@@ -2223,15 +2267,36 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     updateForm({ modelKey });
   };
 
-  const setReasoningEnabled = (enabled: boolean) => {
+  const setReasoningEffort = (value?: string) => {
+    const effort = normalizeReasoningEffort(value);
     updateForm({
       reasoningConfigured: true,
-      reasoningEnabled: enabled,
-      reasoningEffort: enabled
-        ? form.reasoningEffort ||
-          defaultReasoningEffort(selectedModelReasoningEfforts)
-        : "",
+      reasoningEnabled: Boolean(effort),
+      reasoningEffort: effort,
     });
+  };
+
+  const onModelMenuClick: MenuProps["onClick"] = ({ key }) => {
+    const itemKey = String(key);
+    if (itemKey.startsWith("model:")) {
+      setModelKey(decodeURIComponent(itemKey.slice("model:".length)));
+      return;
+    }
+    if (itemKey.startsWith("reasoning:")) {
+      setReasoningEffort(itemKey.slice("reasoning:".length));
+      return;
+    }
+    if (itemKey.startsWith("serviceTier:")) {
+      updateForm({
+        serviceTier: normalizeServiceTier(
+          itemKey.slice("serviceTier:".length),
+        ),
+      });
+    }
+  };
+
+  const onModelMenuOpenChange = (open: boolean) => {
+    if (open && !loadingOptions && !editorOptions) void loadEditorOptions();
   };
 
   const saveForm = async () => {
@@ -2330,6 +2395,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     }
     setPrivateSkillImporting(true);
     setPrivateSkillError("");
+    const hadUnsavedChanges = hasUnsavedChanges;
     try {
       const response = await importAdminAgentPrivateSkill({
         agentKey,
@@ -2337,8 +2403,15 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
       });
       const saved = response.data;
       setDetail(saved);
-      setForm(formFromDetail(saved));
-      setStructuredDirty(false);
+      setForm((current) => {
+        const imported = formFromDetail(saved);
+        return {
+          ...imported,
+          ...current,
+          skills: [...new Set([...imported.skills, ...current.skills])],
+        };
+      });
+      setStructuredDirty(hadUnsavedChanges);
       setPrivateSkillModalOpen(false);
       resetPrivateSkillImport();
       await loadAgents(agentKey);
@@ -2768,29 +2841,16 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
                 editorMode,
                 canEditStructuredAgent,
               ) && (
-                <div
-                  ref={sectionNavLinksRef}
-                  className={AGENT_SECTION_NAV_LINKS_CLASS_NAME}
-                  role="tablist"
-                  aria-label={t("agentConsole.sectionNav.ariaLabel")}
-                >
-                  {agentFormSections.map((section, sectionIndex) => (
-                    <button
-                      type="button"
-                      id={`agent-tab-${section.id}`}
-                      className={AGENT_SECTION_NAV_LINK_CLASS_NAME}
-                      role="tab"
-                      aria-selected={activeSectionId === section.id}
-                      aria-controls={section.id}
-                      tabIndex={activeSectionId === section.id ? 0 : -1}
+                <div className={AGENT_SECTION_NAV_LINKS_CLASS_NAME}>
+                  {agentFormSections.map((section) => (
+                    <a
+                      className={`${AGENT_SECTION_NAV_LINK_CLASS_NAME} ${activeAgentSectionId === section.id ? "is-active" : ""}`}
+                      href={`#${section.id}`}
                       key={section.id}
-                      onClick={() => selectSection(section.id)}
-                      onKeyDown={(event) =>
-                        handleSectionKeyDown(event, sectionIndex)
-                      }
+                      onClick={() => setActiveAgentSectionId(section.id)}
                     >
                       {section.label}
-                    </button>
+                    </a>
                   ))}
                 </div>
               )}
@@ -2963,7 +3023,6 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
                 aria-readonly={isReadOnly}
               >
                 <AgentFormSection
-                  active={activeSectionId === AGENT_FORM_SECTION_IDS[0]}
                   id={AGENT_FORM_SECTION_IDS[0]}
                   icon="person"
                   title={t("agentConsole.basic.identityTitle")}
@@ -2984,89 +3043,95 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
                             }}
                           />
                         </div>
-                        <UiButton
-                          size="sm"
-                          variant="ghost"
-                          className="agent-icon-picker-action"
-                          onClick={() => setIconEditorOpen((open) => !open)}
-                          aria-expanded={iconEditorOpen}
-                          aria-controls="agent-icon-editor"
+                        <Popover
+                          open={iconEditorOpen}
+                          onOpenChange={setIconEditorOpen}
+                          trigger="click"
+                          placement="bottom"
+                          arrow={false}
+                          destroyOnHidden
+                          classNames={{ root: "agent-icon-editor-popover" }}
+                          content={
+                            <div
+                              id="agent-icon-editor"
+                              className="agent-icon-editor-panel"
+                            >
+                              <div className="field-group">
+                                <label htmlFor="agent-icon-kind-input">
+                                  {t("agentConsole.field.icon")}
+                                </label>
+                                <Select
+                                  id="agent-icon-kind-input"
+                                  value={form.iconKind}
+                                  options={[
+                                    {
+                                      value: "none",
+                                      label: t("agentConsole.field.iconKind.none"),
+                                    },
+                                    {
+                                      value: "builtin",
+                                      label: t("agentConsole.field.iconKind.builtin"),
+                                    },
+                                    {
+                                      value: "image",
+                                      label: t("agentConsole.field.iconKind.image"),
+                                    },
+                                  ]}
+                                  onChange={(value: IconKind) =>
+                                    updateForm({ iconKind: value })
+                                  }
+                                />
+                              </div>
+                              {form.iconKind === "builtin" && (
+                                <div className="field-group">
+                                  <label htmlFor="agent-icon-name-input">
+                                    {t("agentConsole.field.iconName")}
+                                  </label>
+                                  <Select
+                                    id="agent-icon-name-input"
+                                    showSearch
+                                    allowClear
+                                    value={form.iconName || undefined}
+                                    options={AGENT_ICON_NAMES.map((name) => ({
+                                      value: name,
+                                      label: name,
+                                    }))}
+                                    onChange={(value) =>
+                                      updateForm({ iconName: value || "" })
+                                    }
+                                  />
+                                </div>
+                              )}
+                              {form.iconKind === "image" && (
+                                <div className="field-group">
+                                  <label htmlFor="agent-icon-image-input">
+                                    {t("agentConsole.field.iconImage")}
+                                  </label>
+                                  <Input
+                                    id="agent-icon-image-input"
+                                    placeholder={t("agentConsole.placeholder.iconImage")}
+                                    value={form.iconImage}
+                                    onChange={(event) =>
+                                      updateForm({ iconImage: event.target.value })
+                                    }
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          }
                         >
-                          <MaterialIcon name="image" />
-                          {iconEditorOpen
-                            ? t("agentConsole.basic.hideIconEditor")
-                            : t("agentConsole.basic.changeIcon")}
-                        </UiButton>
+                          <UiButton
+                            size="sm"
+                            variant="ghost"
+                            className="agent-icon-picker-action"
+                            aria-expanded={iconEditorOpen}
+                            aria-controls="agent-icon-editor"
+                          >
+                            <MaterialIcon name="image" />
+                            {t("agentConsole.basic.changeIcon")}
+                          </UiButton>
+                        </Popover>
                       </div>
-                      {iconEditorOpen && (
-                        <div
-                          ref={iconEditorPanelRef}
-                          id="agent-icon-editor"
-                          className="agent-icon-editor-panel"
-                        >
-                          <div className="field-group">
-                            <label htmlFor="agent-icon-kind-input">
-                              {t("agentConsole.field.icon")}
-                            </label>
-                            <Select
-                              id="agent-icon-kind-input"
-                              value={form.iconKind}
-                              options={[
-                                {
-                                  value: "none",
-                                  label: t("agentConsole.field.iconKind.none"),
-                                },
-                                {
-                                  value: "builtin",
-                                  label: t("agentConsole.field.iconKind.builtin"),
-                                },
-                                {
-                                  value: "image",
-                                  label: t("agentConsole.field.iconKind.image"),
-                                },
-                              ]}
-                              onChange={(value: IconKind) =>
-                                updateForm({ iconKind: value })
-                              }
-                            />
-                          </div>
-                          {form.iconKind === "builtin" && (
-                            <div className="field-group">
-                              <label htmlFor="agent-icon-name-input">
-                                {t("agentConsole.field.iconName")}
-                              </label>
-                              <Select
-                                id="agent-icon-name-input"
-                                showSearch
-                                allowClear
-                                value={form.iconName || undefined}
-                                options={AGENT_ICON_NAMES.map((name) => ({
-                                  value: name,
-                                  label: name,
-                                }))}
-                                onChange={(value) =>
-                                  updateForm({ iconName: value || "" })
-                                }
-                              />
-                            </div>
-                          )}
-                          {form.iconKind === "image" && (
-                            <div className="field-group">
-                              <label htmlFor="agent-icon-image-input">
-                                {t("agentConsole.field.iconImage")}
-                              </label>
-                              <Input
-                                id="agent-icon-image-input"
-                                placeholder={t("agentConsole.placeholder.iconImage")}
-                                value={form.iconImage}
-                                onChange={(event) =>
-                                  updateForm({ iconImage: event.target.value })
-                                }
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                     <div className="agent-identity-fields">
                       <div className="field-group">
@@ -3093,25 +3158,20 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
                           }
                         />
                       </div>
-                      <div className="field-group">
-                        <label htmlFor="agent-description-input">
-                          {t("agentConsole.field.description")}
-                        </label>
-                        <Input.TextArea
-                          id="agent-description-input"
-                          className="agent-description-textarea"
-                          rows={4}
-                          style={
-                            iconEditorHeight
-                              ? { height: iconEditorHeight, minHeight: iconEditorHeight }
-                              : undefined
-                          }
-                          value={form.description}
-                          onChange={(event) =>
-                            updateForm({ description: event.target.value })
-                          }
-                        />
-                      </div>
+                    </div>
+                    <div className="field-group agent-identity-description">
+                      <label htmlFor="agent-description-input">
+                        {t("agentConsole.field.description")}
+                      </label>
+                      <Input.TextArea
+                        id="agent-description-input"
+                        className="agent-description-textarea"
+                        rows={4}
+                        value={form.description}
+                        onChange={(event) =>
+                          updateForm({ description: event.target.value })
+                        }
+                      />
                     </div>
                   </div>
 
@@ -3202,8 +3262,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
 
 
                 <AgentFormSection
-                  active={activeSectionId === AGENT_FORM_SECTION_IDS[1]}
-                  id={AGENT_FORM_SECTION_IDS[1]}
+                  id={AGENT_FORM_SECTION_IDS[2]}
                   icon="subject"
                   title={t("agentConsole.section.prompts")}
                 >
@@ -3299,149 +3358,45 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
                       </div>
                     </div>
                   </div>
-                </AgentFormSection>                <AgentFormSection
-                  active={activeSectionId === AGENT_FORM_SECTION_IDS[2]}
-                  id={AGENT_FORM_SECTION_IDS[2]}
+                </AgentFormSection>
+                <AgentFormSection
+                  id={AGENT_FORM_SECTION_IDS[1]}
                   icon="psychology"
                   title={t("agentConsole.section.model")}
                 >
-                  <div className="agent-model-config">
-                    <div className="field-group agent-model-picker">
-                      <label htmlFor="agent-model-input">
-                        {t("agentConsole.model.model")}
-                      </label>
-                      <Select
-                        id="agent-model-input"
-                        size="large"
-                        showSearch
-                        allowClear
-                        loading={loadingOptions}
-                        value={form.modelKey || undefined}
-                        options={modelOptions}
-                        optionFilterProp="label"
-                        onChange={setModelKey}
-                      />
-                      {(selectedModelContextWindow ||
-                        selectedModel?.isVision ||
-                        selectedModelReasoningSupported === true) && (
-                        <div className="agent-model-capabilities" role="status">
-                          {selectedModelContextWindow && (
-                            <span>
-                              {t("agentConsole.model.context", {
-                                context: selectedModelContextWindow,
-                              })}
-                            </span>
-                          )}
-                          {selectedModel?.isVision && (
-                            <span>{t("agentConsole.model.vision")}</span>
-                          )}
-                          {selectedModelReasoningSupported === true && (
-                            <span>{t("agentConsole.model.reasoningSupported")}</span>
-                          )}
-                        </div>
-                      )}
+                  <div className="agent-model-selector-card">
+                    <div className="agent-model-dropdown">
+                      <Dropdown
+                        menu={{
+                          className: "query-settings-menu",
+                          items: modelItems,
+                          onClick: onModelMenuClick,
+                        }}
+                        onOpenChange={onModelMenuOpenChange}
+                        placement="topRight"
+                        trigger={["click"]}
+                      >
+                        <UiButton
+                          className={`query-settings-btn tw:!min-h-8 tw:!rounded-lg tw:!px-2 tw:!text-[13px] tw:text-text-muted tw:[&_.material-icon]:flex-none tw:[&_.material-icon]:text-sm tw:[&_.ui-btn-label]:inline-flex tw:[&_.ui-btn-label]:min-w-0 tw:[&_.ui-btn-label]:items-center tw:[&_.ui-btn-label]:gap-1 tw:[&_.ui-btn-label>span:not(.material-icon)]:min-w-0 tw:[&_.ui-btn-label>span:not(.material-icon)]:overflow-hidden tw:[&_.ui-btn-label>span:not(.material-icon)]:text-ellipsis tw:[&_.ui-btn-label>span:not(.material-icon)]:whitespace-nowrap query-model-btn tw:overflow-hidden ${queryModelButtonStateClass}`.trim()}
+                          variant="ghost"
+                          size="sm"
+                          disabled={isReadOnly || loadingOptions}
+                          title={formError || t("composer.query.model.title")}
+                          onClick={(event) => event.preventDefault()}
+                        >
+                          {showFastBadge ? <MaterialIcon name="bolt" /> : null}
+                          <span className="query-model-label tw:text-text-main">
+                            {selectedModelLabel}
+                          </span>
+                          <span>{selectedReasoningLabel}</span>
+                          <MaterialIcon name="expand_more" />
+                        </UiButton>
+                      </Dropdown>
                     </div>
-
-                    {toText(form.modelKey) && (
-                      <div className="agent-model-reasoning">
-                        <div className="agent-model-reasoning-heading">
-                          <MaterialIcon name="psychology" />
-                          <h4>{t("agentConsole.model.reasoningTitle")}</h4>
-                        </div>
-                        {selectedModelReasoningSupported === true ? (
-                          <>
-                            <div className="agent-reasoning-switch-row">
-                              <div>
-                                <label htmlFor="agent-reasoning-enabled-input">
-                                  {t("agentConsole.field.reasoningEnabled")}
-                                </label>
-                                <p>{t("agentConsole.model.reasoningHint")}</p>
-                              </div>
-                              {isReadOnly ? (
-                                <span className="agent-readonly-value">
-                                  {form.reasoningEnabled
-                                    ? t("agentConsole.state.enabled")
-                                    : t("agentConsole.state.disabled")}
-                                </span>
-                              ) : (
-                                <Switch
-                                  id="agent-reasoning-enabled-input"
-                                  checked={form.reasoningEnabled}
-                                  onChange={setReasoningEnabled}
-                                />
-                              )}
-                            </div>
-                            <div className="field-group agent-reasoning-effort-field">
-                              <span
-                                id="agent-reasoning-effort-label"
-                                className="field-label"
-                              >
-                                {t("agentConsole.field.reasoningEffort")}
-                              </span>
-                              {isReadOnly ? (
-                                form.reasoningEnabled && (
-                                  <span className="agent-readonly-value">
-                                    {reasoningEffortLabel(
-                                      form.reasoningEffort,
-                                      t,
-                                    )}
-                                  </span>
-                                )
-                              ) : (
-                                <>
-                                  <div
-                                    className="agent-reasoning-effort-options"
-                                    role="radiogroup"
-                                    aria-labelledby="agent-reasoning-effort-label"
-                                    aria-disabled={!form.reasoningEnabled}
-                                  >
-                                    {reasoningEffortOptions.map((option) => (
-                                      <label
-                                        key={option.value}
-                                        className={
-                                          form.reasoningEffort === option.value
-                                            ? "is-selected"
-                                            : ""
-                                        }
-                                      >
-                                        <input
-                                          type="radio"
-                                          name="agent-reasoning-effort"
-                                          value={option.value}
-                                          checked={
-                                            form.reasoningEffort === option.value
-                                          }
-                                          disabled={!form.reasoningEnabled}
-                                          onChange={() =>
-                                            updateForm({
-                                              reasoningConfigured: true,
-                                              reasoningEffort: option.value,
-                                            })
-                                          }
-                                        />
-                                        <span>{option.label}</span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                  <p className="agent-reasoning-effort-hint">
-                                    {t("agentConsole.model.reasoningEffortHint")}
-                                  </p>
-                                </>
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          <p className="agent-model-reasoning-unavailable">
-                            {t("agentConsole.model.reasoningUnavailable")}
-                          </p>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </AgentFormSection>
 
                 <AgentFormSection
-                  active={activeSectionId === AGENT_FORM_SECTION_IDS[3]}
                   id={AGENT_FORM_SECTION_IDS[3]}
                   icon="hub"
                   title={t("agentConsole.section.capabilities")}
@@ -3449,20 +3404,23 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
                   <div className="agent-context-capabilities">
                     <section className="agent-context-block" aria-labelledby="agent-context-heading">
                       <h4 id="agent-context-heading">{t("agentConsole.context.title")}</h4>
-                      <div className="agent-context-options">
+                      <div className="agent-context-tag-list" role="group" aria-labelledby="agent-context-heading">
                         {contextTagOptions.map((option) => {
                           const presentation = contextOptionPresentation(option.value);
+                          const checked = form.contextTags.includes(option.value);
                           return (
-                            <label key={option.value} className="agent-context-option">
-                              <span className="agent-context-option-icon" aria-hidden="true"><MaterialIcon name={presentation.icon} /></span>
-                              <span className="agent-context-option-copy"><strong>{option.label}</strong><span>{t(presentation.descriptionKey)}</span></span>
-                              <Switch
-                                checked={form.contextTags.includes(option.value)}
-                                aria-label={option.label}
-                                onChange={(enabled) => updateForm({
-                                  contextTags: enabled ? [...form.contextTags, option.value] : form.contextTags.filter((key) => key !== option.value),
+                            <label key={option.value} className={`agent-context-tag ${checked ? "is-selected" : ""}`} title={t(presentation.descriptionKey)}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => updateForm({
+                                  contextTags: checked
+                                    ? form.contextTags.filter((key) => key !== option.value)
+                                    : [...form.contextTags, option.value],
                                 })}
                               />
+                              <MaterialIcon name={presentation.icon} />
+                              <span>{option.label}</span>
                             </label>
                           );
                         })}
@@ -3473,42 +3431,58 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
                       <div className="agent-context-block-heading">
                         <h4 id="agent-tools-heading">{t("agentConsole.field.tools")}</h4>
                         {!isReadOnly && (
-                          <UiButton size="sm" variant="ghost" aria-expanded={toolsExpanded} aria-controls="agent-tools-manager" onClick={() => setToolsExpanded((expanded) => !expanded)}>
-                            <MaterialIcon name={toolsExpanded ? "collapse_content" : "tune"} />
-                            {t(toolsExpanded ? "agentConsole.context.collapseTools" : "agentConsole.context.manageTools")}
-                          </UiButton>
+                          <Popover
+                            content={
+                              <div id="agent-tools-manager" className="agent-capability-manager agent-capability-popover agent-capability-popover--compact">
+                                <div className="agent-tool-list-toolbar">
+                                  <Input aria-label={t("agentConsole.context.searchTools")} prefix={<MaterialIcon name="search" />} placeholder={t("agentConsole.context.searchTools")} value={toolSearchText} onChange={(event) => setToolSearchText(event.target.value)} />
+                                  <div className="agent-tool-filter" role="group" aria-label={t("agentConsole.context.filterTools")}>
+                                    {(["all", "file", "desktop", "system"] as const).map((filter) => (
+                                      <button key={filter} type="button" className={toolFilter === filter ? "is-active" : ""} onClick={() => setToolFilter(filter)}>{t(`agentConsole.context.toolFilter.${filter}`)}</button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="agent-selectable-list agent-capability-scroll" role="group" aria-label={t("agentConsole.field.tools")}>
+                                  {filteredToolOptions.map((tool) => {
+                                    const toolCategory = toolFilterForOption(tool);
+                                    return (
+                                      <label key={tool.key} className="agent-selectable-row">
+                                        <input type="checkbox" checked={form.tools.includes(tool.key)} onChange={(event) => updateForm({ tools: event.target.checked ? [...form.tools, tool.key] : form.tools.filter((key) => key !== tool.key) })} />
+                                        <MaterialIcon name={toolCategory === "file" ? "description" : toolCategory === "desktop" ? "terminal" : "settings"} />
+                                        <span className="agent-selectable-row-copy"><strong>{tool.label}</strong>{tool.label !== tool.key && <span>· {tool.key}</span>}</span>
+                                        <span className="agent-selectable-row-meta">{toolSourceLabel(tool.sourceCategory, t) || tool.kind}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            }
+                            open={toolsExpanded}
+                            onOpenChange={setToolsExpanded}
+                            placement="bottomRight"
+                            trigger={["click"]}
+                          >
+                            <UiButton size="sm" variant="ghost" aria-expanded={toolsExpanded} aria-controls="agent-tools-manager">
+                              <MaterialIcon name="tune" />
+                              {t("agentConsole.context.manageTools")}
+                            </UiButton>
+                          </Popover>
                         )}
                       </div>
-                      <div className="agent-selection-summary" aria-live="polite">
+                      <div className="agent-tool-tag-list" aria-live="polite">
                         <strong>{t("agentConsole.context.selectedCount", { count: form.tools.length })}</strong>
-                        {selectedToolLabels.slice(0, 4).map((label) => <span key={label}>{label}</span>)}
-                        {selectedToolLabels.length > 4 && <span>{t("agentConsole.context.moreSelected", { count: selectedToolLabels.length - 4 })}</span>}
+                        {selectedTools.map((tool) => (
+                          <span key={tool.key} className="agent-tool-tag">
+                            <MaterialIcon name={toolFilterForOption(tool) === "file" ? "description" : toolFilterForOption(tool) === "desktop" ? "terminal" : "settings"} />
+                            <span>{tool.label}</span>
+                            {!isReadOnly && (
+                              <button type="button" aria-label={t("agentConsole.prompt.removeItem", { index: tool.label })} onClick={() => updateForm({ tools: form.tools.filter((key) => key !== tool.key) })}>
+                                <MaterialIcon name="close" />
+                              </button>
+                            )}
+                          </span>
+                        ))}
                       </div>
-                      {toolsExpanded && (
-                        <div id="agent-tools-manager" className="agent-capability-manager">
-                          <div className="agent-tool-list-toolbar">
-                            <Input aria-label={t("agentConsole.context.searchTools")} prefix={<MaterialIcon name="search" />} placeholder={t("agentConsole.context.searchTools")} value={toolSearchText} onChange={(event) => setToolSearchText(event.target.value)} />
-                            <div className="agent-tool-filter" role="group" aria-label={t("agentConsole.context.filterTools")}>
-                              {(["all", "file", "desktop", "system"] as const).map((filter) => (
-                                <button key={filter} type="button" className={toolFilter === filter ? "is-active" : ""} onClick={() => setToolFilter(filter)}>{t(`agentConsole.context.toolFilter.${filter}`)}</button>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="agent-selectable-list agent-capability-scroll" role="group" aria-label={t("agentConsole.field.tools")}>
-                            {filteredToolOptions.map((tool) => {
-                              const toolCategory = toolFilterForOption(tool);
-                              return (
-                                <label key={tool.key} className="agent-selectable-row">
-                                  <input type="checkbox" checked={form.tools.includes(tool.key)} onChange={(event) => updateForm({ tools: event.target.checked ? [...form.tools, tool.key] : form.tools.filter((key) => key !== tool.key) })} />
-                                  <MaterialIcon name={toolCategory === "file" ? "description" : toolCategory === "desktop" ? "terminal" : "settings"} />
-                                  <span className="agent-selectable-row-copy"><strong>{tool.label}</strong>{tool.label !== tool.key && <span>· {tool.key}</span>}</span>
-                                  <span className="agent-selectable-row-meta">{toolSourceLabel(tool.sourceCategory, t) || tool.kind}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
                     </section>
 
                     <section className="agent-context-block" aria-labelledby="agent-skills-heading">
@@ -3516,35 +3490,68 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
                         <h4 id="agent-skills-heading">{t("agentConsole.field.skills")}</h4>
                         {!isReadOnly && (
                           <span className="agent-context-heading-actions">
-                            <UiButton size="sm" variant="ghost" aria-expanded={skillsExpanded} aria-controls="agent-skills-manager" onClick={() => setSkillsExpanded((expanded) => !expanded)}><MaterialIcon name={skillsExpanded ? "collapse_content" : "tune"} />{t(skillsExpanded ? "agentConsole.context.collapseSkills" : "agentConsole.context.manageSkills")}</UiButton>
                             <UiButton size="sm" variant="ghost" onClick={openPrivateSkillImport} disabled={!canImportPrivateSkill} title={canImportPrivateSkill ? t("agentConsole.privateSkill.import.title") : t("agentConsole.privateSkill.import.disabled")}><MaterialIcon name="folder_zip" />{t("agentConsole.privateSkill.import.action")}</UiButton>
+                            <Popover
+                              content={
+                                <div id="agent-skills-manager" className="agent-capability-manager agent-capability-popover agent-capability-popover--compact agent-skill-manager-popover">
+                                  <Input className="agent-skill-search" aria-label={t("agentConsole.context.searchSkills")} prefix={<MaterialIcon name="search" />} placeholder={t("agentConsole.context.searchSkills")} value={skillSearchText} onChange={(event) => setSkillSearchText(event.target.value)} />
+                                  <div className="agent-selectable-list agent-capability-scroll agent-skill-single-line-list" role="group" aria-label={t("agentConsole.field.skills")}>
+                                    {filteredSkillOptions.map((skill) => {
+                                      const description = skill.description || (skill.source === "private" ? t("agentConsole.privateSkill.source.private") : t("agentConsole.privateSkill.source.center"));
+                                      return (
+                                        <label key={skill.key} className="agent-selectable-row agent-skill-row agent-skill-row--single-line">
+                                          <input type="checkbox" checked={form.skills.includes(skill.key)} onChange={(event) => updateForm({ skills: event.target.checked ? [...form.skills, skill.key] : form.skills.filter((key) => key !== skill.key) })} />
+                                          <MaterialIcon name="skills" />
+                                          <span className="agent-selectable-row-copy">
+                                            <strong className="agent-skill-title">{skill.label}</strong>
+                                            <Tooltip title={description} placement="right" mouseEnterDelay={0.35} overlayClassName="agent-skill-description-tooltip">
+                                              <span className="agent-skill-description-help" tabIndex={0} aria-label={description}>
+                                                <MaterialIcon name="info" />
+                                              </span>
+                                            </Tooltip>
+                                          </span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              }
+                              open={skillsExpanded}
+                              onOpenChange={setSkillsExpanded}
+                              placement="bottomRight"
+                              trigger={["click"]}
+                            >
+                              <UiButton size="sm" variant="ghost" aria-expanded={skillsExpanded} aria-controls="agent-skills-manager"><MaterialIcon name="tune" />{t("agentConsole.context.manageSkills")}</UiButton>
+                            </Popover>
                           </span>
                         )}
                       </div>
-                      <div className="agent-selection-summary" aria-live="polite">
+                      <div className="agent-selected-skill-list" aria-live="polite">
                         <strong>{t("agentConsole.context.selectedCount", { count: form.skills.length })}</strong>
-                        {selectedSkillLabels.slice(0, 4).map((label) => <span key={label}>{label}</span>)}
-                        {selectedSkillLabels.length > 4 && <span>{t("agentConsole.context.moreSelected", { count: selectedSkillLabels.length - 4 })}</span>}
+                        {selectedSkills.map((skill) => {
+                          const description = skill.description || (skill.source === "private" ? t("agentConsole.privateSkill.source.private") : t("agentConsole.privateSkill.source.center"));
+                          return (
+                            <div key={skill.key} className="agent-selected-skill-row">
+                              <MaterialIcon name="skills" />
+                              <span className="agent-selected-skill-copy">
+                                <strong className="agent-skill-title">{skill.label}</strong>
+                                <span className="agent-skill-inline-separator" aria-hidden="true">·</span>
+                                <span className="agent-skill-description" title={description}>{description}</span>
+                              </span>
+                              {!isReadOnly && (
+                                <button type="button" aria-label={t("agentConsole.prompt.removeItem", { index: skill.label })} onClick={() => updateForm({ skills: form.skills.filter((key) => key !== skill.key) })}>
+                                  <MaterialIcon name="close" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                      {skillsExpanded && (
-                        <div id="agent-skills-manager" className="agent-capability-manager">
-                          <div className="agent-selectable-list agent-capability-scroll" role="group" aria-label={t("agentConsole.field.skills")}>
-                            {agentSkillOptions.map((skill) => (
-                              <label key={skill.key} className="agent-selectable-row agent-skill-row">
-                                <input type="checkbox" checked={form.skills.includes(skill.key)} onChange={(event) => updateForm({ skills: event.target.checked ? [...form.skills, skill.key] : form.skills.filter((key) => key !== skill.key) })} />
-                                <MaterialIcon name="skills" />
-                                <span className="agent-selectable-row-copy"><strong>{skill.label}</strong><span>· {skill.source === "private" ? t("agentConsole.privateSkill.source.private") : t("agentConsole.privateSkill.source.center")}</span></span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </section>
                   </div>
                 </AgentFormSection>
 
                 <AgentFormSection
-                  active={activeSectionId === AGENT_FORM_SECTION_IDS[4]}
                   id={AGENT_FORM_SECTION_IDS[4]}
                   icon="tune"
                   title={t("agentConsole.section.advancedConfig")}
@@ -3580,23 +3587,46 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
                       />
                     </div>
                     <div className={AGENT_FORM_FULL_WIDTH_CLASS_NAME}>
-                      <label htmlFor="agent-memory-input">
-                        {t("agentConsole.field.memoryConfig")}
-                      </label>
-                      <Input.TextArea
-                        id="agent-memory-input"
-                        className={AGENT_MONO_TEXTAREA_CLASS_NAME}
-                        rows={5}
-                        value={form.memoryConfigText}
-                        onChange={(event) =>
-                          updateForm({ memoryConfigText: event.target.value })
-                        }
-                      />
-                    </div>
-                    <div className={AGENT_FORM_FULL_WIDTH_CLASS_NAME}>
-                      <label htmlFor="agent-budget-input">
-                        {t("agentConsole.field.budget")}
-                      </label>
+                      <div className="agent-advanced-field-heading">
+                        <label htmlFor="agent-budget-input">
+                          {t("agentConsole.field.budget")}
+                        </label>
+                        {!isReadOnly && (
+                          <Dropdown
+                            menu={{
+                              items: [
+                                {
+                                  key: "simple",
+                                  label: t("agentConsole.budget.template.simple"),
+                                },
+                                {
+                                  key: "advanced",
+                                  label: t("agentConsole.budget.template.advanced"),
+                                },
+                              ],
+                              onClick: ({ key }) =>
+                                updateForm({
+                                  budgetText:
+                                    key === "simple"
+                                      ? SIMPLE_BUDGET_TEMPLATE
+                                      : BUDGET_PLACEHOLDER,
+                                }),
+                            }}
+                            placement="bottomRight"
+                            trigger={["click"]}
+                          >
+                            <UiButton
+                              className="agent-budget-template-trigger"
+                              size="mini"
+                              variant="ghost"
+                            >
+                              <MaterialIcon name="content_copy" />
+                              <span>{t("agentConsole.budget.template")}</span>
+                              <MaterialIcon name="expand_more" />
+                            </UiButton>
+                          </Dropdown>
+                        )}
+                      </div>
                       <Input.TextArea
                         id="agent-budget-input"
                         className={AGENT_MONO_TEXTAREA_CLASS_NAME}

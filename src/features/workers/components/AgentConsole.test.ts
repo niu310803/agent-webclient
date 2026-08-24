@@ -26,9 +26,18 @@ jest.mock("antd", () => {
   Modal.confirm = jest.fn();
   return {
     Checkbox: ({ children, ...props }: any) => React.createElement("label", null, React.createElement("input", { ...props, type: "checkbox" }), children),
+    Dropdown: ({ children }: { children?: unknown }) =>
+      React.createElement("div", { className: "mock-dropdown" }, children),
     Input,
     Modal,
-    Select: ({ allowClear, loading, mode, optionFilterProp, options = [], showSearch, value, ...props }: any) =>
+    Popover: ({ children, classNames, content }: any) =>
+      React.createElement(
+        "div",
+        { className: classNames?.root || "mock-popover" },
+        children,
+        content,
+      ),
+    Select: ({ allowClear, loading, mode, optionFilterProp, optionRender, options = [], showSearch, value, ...props }: any) =>
       React.createElement(
         "select",
         {
@@ -104,7 +113,8 @@ jest.mock("@/shared/ui/MaterialIcon", () => ({
 }));
 
 jest.mock("@/shared/ui/UiButton", () => ({
-  UiButton: ({ children }: { children?: unknown }) => children || null,
+  UiButton: ({ children, className, iconOnly, loading, size, variant, ...props }: any) =>
+    React.createElement("button", { ...props, className }, children),
 }));
 
 import {
@@ -120,6 +130,7 @@ import {
   buildAgentListSummary,
   confirmAgentDraftDiscard,
   defaultReasoningEffort,
+  initialAgentInteractionMode,
   firstAdminAgentDiagnosticMessage,
   formFromDetail,
   getModelReasoningEfforts,
@@ -466,6 +477,11 @@ describe("AgentConsole admin diagnostics", () => {
 
 
 describe("AgentConsole i18n rendering", () => {
+  it("opens existing agents in read-only mode while new agents remain editable", () => {
+    expect(initialAgentInteractionMode("edit")).toBe("view");
+    expect(initialAgentInteractionMode("create")).toBe("edit");
+  });
+
   beforeEach(() => {
     mockAppState.agents = [];
     mockDispatch.mockReset();
@@ -534,7 +550,32 @@ describe("AgentConsole i18n rendering", () => {
     expect(html).toContain("runTimeoutMs");
   });
 
-  it("renders five accessible tabs with one visible configuration panel", () => {
+  it("uses the Composer model dropdown trigger instead of separate model controls", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        I18nProvider,
+        { locale: "en-US", persistLocale: false },
+        React.createElement(AgentConsole),
+      ),
+    );
+
+    expect(html).toContain("query-model-btn");
+    expect(html).not.toContain("agent-model-composer");
+  });
+
+  it("renders the model selector as an interactive control below its section label", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        I18nProvider,
+        { locale: "en-US", persistLocale: false },
+        React.createElement(AgentConsole),
+      ),
+    );
+
+    expect(html).toContain("agent-model-selector-card");
+  });
+
+  it("renders five anchor-linked configuration sections", () => {
     const html = renderToStaticMarkup(
       React.createElement(
         I18nProvider,
@@ -547,16 +588,15 @@ describe("AgentConsole i18n rendering", () => {
       html.indexOf(`id="${id}"`),
     );
     expect(positions.every((position) => position >= 0)).toBe(true);
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(html.match(/role="tab"/g)).toHaveLength(5);
-    expect(html.match(/role="tabpanel"/g)).toHaveLength(5);
-    expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
-    expect(html.match(/ hidden=""/g)).toHaveLength(4);
+    expect(html.match(/href="#agent-section-/g)).toHaveLength(5);
+    expect(html).not.toContain('role="tab"');
+    expect(html).not.toContain('role="tabpanel"');
+    expect(html).not.toContain(' hidden=""');
     expect(html).not.toContain("agent-config-box");
     expect(html).not.toContain("<fieldset");
   });
 
-  it("shows tabs only for editable structured forms", () => {
+  it("shows anchor navigation only for editable structured forms", () => {
     expect(shouldShowAgentSectionNav("structured", true)).toBe(true);
     expect(shouldShowAgentSectionNav("source", true)).toBe(false);
     expect(shouldShowAgentSectionNav("structured", false)).toBe(false);
@@ -610,18 +650,23 @@ describe("AgentConsole i18n rendering", () => {
     expect(basic).not.toContain("agent-detail-path-field");
     expect(basic).toContain("agent-basic-identity");
     expect(basic).toContain("agent-identity-avatar");
+    expect(basic).toContain("agent-identity-description");
+    expect(basic).toContain("agent-icon-editor-popover");
     expect(basic).toContain("agent-basic-runtime");
     expect(basic).toContain("Identity information");
     expect(basic).toContain("Run mode");
     expect(advanced).not.toContain("agent-visibility-input");
     expect(context).toContain("agent-context-capabilities");
-    expect(context).toContain("agent-context-options");
-    expect(context).toContain("agent-selection-summary");
+    expect(context).toContain("agent-context-tag-list");
+    expect(context).toContain("agent-tool-tag-list");
+    expect(context).toContain("agent-selected-skill-list");
     expect(context).toContain("Manage tools");
     expect(context).toContain("Manage skills");
+    expect(context).toContain("agent-capability-popover--compact");
+    expect(context).toContain("agent-skill-single-line-list");
   });
 
-  it("renders every advanced configuration as a plain full-width textarea", () => {
+  it("renders advanced configuration textareas without memory configuration", () => {
     const html = renderToStaticMarkup(
       React.createElement(
         I18nProvider,
@@ -636,12 +681,15 @@ describe("AgentConsole i18n rendering", () => {
     expect(advanced).toContain(
       'class="field-group agent-form-full-width',
     );
-    expect(advanced.match(/agent-form-full-width/g)).toHaveLength(4);
+    expect(advanced.match(/agent-form-full-width/g)).toHaveLength(3);
     expect(advanced).toContain("agent-controls-input");
     expect(advanced).toContain("agent-runtime-input");
     expect(advanced).toContain("agent-budget-input");
-    expect(advanced).toContain("agent-memory-input");
-    expect(advanced).toContain("Memory Config");
+    expect(advanced).not.toContain("agent-memory-input");
+    expect(advanced).toContain("Templates");
+    expect(advanced).toContain("agent-budget-template-trigger");
+    expect(advanced).not.toContain("Use simple");
+    expect(advanced).not.toContain("Use advanced");
   });
 });
 
