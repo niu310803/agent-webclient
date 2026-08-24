@@ -10,7 +10,7 @@ WebClient 业务层只依赖 `RealtimeTransport`，门面固定提供 `runs`、`
 
 - `RunTransport`：`startQuery`、`startBtw`、`subscribe`、`interrupt`、awaiting/tool submit、`steer`、access level。
 - `PushTransport`：支持多消费者以及 type/chat/run/agent 过滤；取消订阅立即通过统一 detach 停止该消费者。
-- `InboundRequestTransport`：仅 Standalone 根网站注册 `desktop.action.call` WorkPanel 反向 action。
+- `InboundRequestTransport`：仅 Standalone 根网站注册七个精确 `desktop.workpanel.*` 与 `desktop.display` 反向 request type；handler 同时获得帧顶层可信 `source`。
 - `TerminalTransport`：`open`、status subscription、write、resize、detach、close。
 
 `RunExecution` 同步返回 `identity`、`completion` 和幂等 `detach`；`TerminalExecution` 保留自己的 `accepted`。query 的 identity 只从关联 stream 中首个 canonical `chatId/runId/owner` 事件取得，identity 前事件进入有界缓冲并在身份稳定后按原序投影。Terminal 的 `detach` 只停止当前 Surface 观察，`close` 才结束终端；即使先 detach，后续显式 close 仍会发送关闭操作。
@@ -31,7 +31,9 @@ Run push 的聊天摘要、未读、awaiting 与 active-run 更新仍由 convers
 
 ## Standalone WorkPanel 反向 Request
 
-Standalone 根路由注册一个 `desktop.action.call` handler，只接受七个 `desktop.workpanel.*`：`getState/openTab/openWeb/refreshWeb/activateTab/closeTab/closeWorkpanel`。它把 WorkPanel 语义投影到现有右侧栏与 Web Preview；内置项 ID 固定为 `sidebar:overview|btw|debug`，网页项 ID 为 `web:<规范化 URL 的 base64url>`。`refreshWeb` 同时激活目标；`closeWorkpanel` 只隐藏右侧栏并保留 Web Preview。`source.chatId` 必须等于当前页面 Chat；native、其他 WebClient module、固定或不可关闭网页 descriptor 返回 `unsupported_in_current_view`。Desktop adapter 不暴露 `inbound`，因此不会注册该 handler。
+Standalone 根路由分别注册七个 `desktop.workpanel.*`：`getState/openTab/openWeb/refreshWeb/activateTab/closeTab/closeWorkpanel`，以及 `desktop.display`。每个 handler 直接读取该 Action 的纯对象 payload；帧顶层 `source.chatId/runId` 必须等于当前页面 Chat/Run，owner 字段不得冲突。WorkPanel Action 把语义投影到现有右侧栏与 Web Preview；内置项 ID 固定为 `sidebar:overview|btw|debug`，网页项 ID 为 `web:<规范化 URL 的 base64url>`。`refreshWeb` 同时激活目标；`closeWorkpanel` 只隐藏右侧栏并保留 Web Preview。native、其他 WebClient module、固定或不可关闭网页 descriptor 返回 `unsupported_in_current_view`。`desktop.display` 支持 fireworks、snowfall、nationalDay，严格校验 1000–30000 ms 整数时长，新效果替换旧效果，减少动态效果偏好下只显示静态装饰与淡入淡出。Desktop adapter 不暴露 `inbound`，因此不会注册这些 handler。
+
+旧的统一 Action envelope 不注册 handler，按 `unknown_request_type` 失败。`action.*` 事件仍可进入事件枚举与 Debug 展示，但历史或实时事件都不再执行主题切换或视觉副作用；显示效果只能通过可信反向 `desktop.display` request 启动。
 
 ## Desktop adapter
 

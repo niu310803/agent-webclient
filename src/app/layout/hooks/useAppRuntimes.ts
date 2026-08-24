@@ -5,7 +5,6 @@ import { useDesktopLiveSurfaceRecovery } from "@/features/runs/hooks/useDesktopL
 import { useConversationEventHandler } from "@/features/conversation/hooks/useConversationEventHandler";
 import { useMessageActions } from "@/features/composer/hooks/useMessageActions";
 import { useMemoryRecordsInitialization } from "@/features/settings/hooks/useMemoryRecordsInitialization";
-import { useActionRuntime } from "@/features/tools/hooks/useActionRuntime";
 import { useConversationWsRuntime } from "@/features/conversation/hooks/useConversationWsRuntime";
 import { useVoiceChatRuntime } from "@/features/voice/hooks/useVoiceChatRuntime";
 import { useVoiceRuntime } from "@/features/voice/hooks/useVoiceRuntime";
@@ -32,7 +31,6 @@ export function useAppRuntimes(
   });
   useChatReadSync();
   useMessageActions({ onAgentEvent: handleEvent });
-  useActionRuntime();
   useVoiceRuntime();
   useVoiceChatRuntime({ onAgentEvent: handleEvent });
   useMemoryRecordsInitialization();

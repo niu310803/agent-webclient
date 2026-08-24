@@ -2863,16 +2863,6 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-soft) 32%, transparent);
 }
 
-/* ========================================
-   Fireworks Canvas
-   ======================================== */
-#fireworks-canvas {
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-    pointer-events: none;
-}
-
 .command-status-overlay {
     position: fixed;
     inset: 0;

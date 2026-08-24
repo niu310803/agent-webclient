@@ -71,6 +71,7 @@
 @import "./globals/sidebar.css";
 @import "./globals/events.css";
 @import "./globals/modal.css";
+@import "./globals/display.css";
 @import "./globals/workers.css";
 @import "./globals/responsive.css";
 @import "./globals/copilot.css";

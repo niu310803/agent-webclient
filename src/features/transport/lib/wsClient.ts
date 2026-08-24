@@ -17,6 +17,7 @@ import {
 	PlatformRequestTimeoutError,
 } from "@/features/transport/lib/platformFrameClient";
 import type { AgentPlatformRequestFrame } from "@/features/transport/contracts/generated/agentWebclientBridge";
+import type { InboundRequestMetadata } from "@/features/transport/contracts/realtimeTransport";
 
 export type WsConnectionStatus =
 	| "disconnected"
@@ -49,6 +50,7 @@ export interface WsInboundRequestFrame {
 	frame: "request";
 	type: string;
 	id: string;
+	source?: unknown;
 	payload?: unknown;
 }
 
@@ -105,6 +107,7 @@ type WsOutboundFrame =
 
 export type WsInboundRequestHandler = (
 	payload: unknown,
+	metadata: InboundRequestMetadata,
 ) => Promise<unknown> | unknown;
 
 export type UnsubscribeWsInboundRequestHandler = () => void;
@@ -1106,7 +1109,11 @@ export class StandaloneSocketDriver extends PlatformFrameClient {
 		}
 		const generation = this.inboundRequestGeneration;
 		try {
-			const data = await handler(frame.payload);
+			const data = await handler(frame.payload, {
+				id,
+				type,
+				...(frame.source === undefined ? {} : { source: frame.source }),
+			});
 			if (generation !== this.inboundRequestGeneration) {
 				return;
 			}

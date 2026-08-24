@@ -1,4 +1,3 @@
-import type { ActionRuntime } from "@/features/tools/lib/actionRuntime";
 import type { ViewerTarget } from "@/features/viewers/lib/viewerTarget";
 import type {
 	MemoryInfoFilters,
@@ -251,6 +250,5 @@ export interface AppState {
 }
 
 export interface Services {
-	actionRuntime: ActionRuntime | null;
 	[key: string]: unknown;
 }

@@ -329,6 +329,7 @@ describe("WsClient", () => {
 				frame: "request",
 				type: "test.inbound.setState",
 				id: "wsa-1",
+				source: { runId: "run-1", chatId: "chat-1", agentKey: "agent-1" },
 				payload: {
 					sidebar: "right",
 					open: true,
@@ -338,11 +339,18 @@ describe("WsClient", () => {
 		);
 		await flushMicrotasks();
 
-		expect(handler).toHaveBeenCalledWith({
-			sidebar: "right",
-			open: true,
-			tab: "debug",
-		});
+		expect(handler).toHaveBeenCalledWith(
+			{
+				sidebar: "right",
+				open: true,
+				tab: "debug",
+			},
+			{
+				id: "wsa-1",
+				type: "test.inbound.setState",
+				source: { runId: "run-1", chatId: "chat-1", agentKey: "agent-1" },
+			},
+		);
 		expect(JSON.parse(socket.sent[0])).toEqual({
 			frame: "response",
 			type: "test.inbound.setState",

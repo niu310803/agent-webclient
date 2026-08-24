@@ -1701,5 +1701,10 @@ export const zhCNMessages = {
   "settings.tts.status.stopped": "已停止",
   "settings.tts.status.noAudioFrames": "已连接，但未收到音频帧",
   "share.label": "分享的对话",
+  "display.nationalDayGreeting": "欢度国庆",
+  "display.error.unexpectedFields": "desktop.display 不接受这些字段：{fields}",
+  "display.error.invalidKind": "kind 必须为 effect",
+  "display.error.invalidEffect": "effect 必须为 fireworks、snowfall 或 nationalDay",
+  "display.error.invalidDuration": "durationMs 必须是 {min} 到 {max} 之间的整数",
 
 } satisfies I18nMessages;

@@ -141,9 +141,9 @@ jest.mock("@/app/modals/EventPopover", () => ({
     React.createElement("div", { className: "event-popover" }, "event"),
 }));
 
-jest.mock("@/app/effects/FireworksCanvas", () => ({
-  FireworksCanvas: () =>
-    React.createElement("canvas", { className: "fireworks-canvas" }),
+jest.mock("@/features/display/components/DisplayOverlay", () => ({
+  DisplayOverlay: () =>
+    React.createElement("div", { className: "display-overlay" }),
 }));
 
 const { useNavigate, useParams, useSearchParams } = jest.requireMock("react-router-dom") as {

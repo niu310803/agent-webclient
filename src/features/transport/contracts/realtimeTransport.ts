@@ -117,8 +117,15 @@ export interface PushTransport {
   subscribe(filter: PushFilter, listener: (frame: PushFrame) => void): () => void;
 }
 
+export interface InboundRequestMetadata {
+	id: string;
+	type: string;
+	source?: unknown;
+}
+
 export type InboundRequestHandler = (
-  payload: unknown,
+	payload: unknown,
+	metadata: InboundRequestMetadata,
 ) => Promise<unknown> | unknown;
 
 export interface InboundRequestTransport {

@@ -1702,5 +1702,10 @@ export const enUSMessages = {
   "settings.tts.status.stopped": "Stopped",
   "settings.tts.status.noAudioFrames": "Connected, but no audio frames were received",
   "share.label": "Shared conversation",
+  "display.nationalDayGreeting": "Happy National Day",
+  "display.error.unexpectedFields": "desktop.display does not accept: {fields}",
+  "display.error.invalidKind": "kind must be effect",
+  "display.error.invalidEffect": "effect must be fireworks, snowfall, or nationalDay",
+  "display.error.invalidDuration": "durationMs must be an integer from {min} to {max}",
 
 } satisfies I18nMessages;
