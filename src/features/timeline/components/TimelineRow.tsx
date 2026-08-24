@@ -414,7 +414,11 @@ export const TimelineRow: React.FC<TimelineRowProps> = ({
           <NodeIcon kind="message" role="system" />
         </div>
         <div className={TIMELINE_FLOW_CONTENT_CLASS_NAME}>
-          <SystemAlert text={node.text || ""} errorDetail={node.errorDetail} />
+          <SystemAlert
+            text={node.text || ""}
+            tooltip={node.tooltip}
+            errorDetail={node.errorDetail}
+          />
           {timeNode}
         </div>
       </div>

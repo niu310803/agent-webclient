@@ -457,6 +457,8 @@ export interface AIContextCompactEvent extends AIBaseEvent {
   preCompactEstimatedTokens?: number;
   postCompactEstimatedTokens?: number;
   compressionRatio?: number;
+  remainingRatio?: number;
+  releasedRatio?: number;
   elapsedMs?: number;
   compactionUsage?: AIUsageStats;
   cacheMetrics?: Record<string, unknown>;

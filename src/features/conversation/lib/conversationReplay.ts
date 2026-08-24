@@ -382,12 +382,18 @@ function applyReplayEventCommand(rs: ReplayState, command: EventCommand): void {
       rs.timelineOrder.push(command.nodeId);
       return;
     case 'SYSTEM_ERROR':
+    case 'SYSTEM_MESSAGE':
       rs.timelineNodes.set(command.nodeId, {
         id: command.nodeId,
         kind: 'message',
         role: 'system',
         text: command.text,
-        ...(command.errorDetail ? { errorDetail: command.errorDetail } : {}),
+        ...(command.cmd === 'SYSTEM_ERROR' && command.errorDetail
+          ? { errorDetail: command.errorDetail }
+          : {}),
+        ...(command.cmd === 'SYSTEM_MESSAGE' && command.tooltip
+          ? { tooltip: command.tooltip }
+          : {}),
         ts: command.ts,
       });
       rs.timelineOrder.push(command.nodeId);

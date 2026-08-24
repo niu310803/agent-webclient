@@ -210,6 +210,7 @@ function applyCommands(state: TestState, commands: EventCommand[]): void {
           kind: 'message',
           role: 'system',
           text: command.text,
+          tooltip: command.tooltip,
           ts: command.ts,
         });
         state.timelineOrder.push(command.nodeId);
@@ -241,6 +242,8 @@ describe('processStreamEvent', () => {
       preCompactEstimatedTokens: 9000,
       postCompactEstimatedTokens: 4000,
       compressionRatio: 4 / 9,
+      remainingRatio: 44.44,
+      releasedRatio: 55.56,
       toolsCleared: 0,
       toolsKept: 0,
       tokensFreed: 0,
@@ -252,7 +255,8 @@ describe('processStreamEvent', () => {
       id: 'compact_compact-1',
       kind: 'message',
       role: 'system',
-      text: expect.stringContaining('44%'),
+      text: expect.stringContaining('上下文剩余 44.44% / 已释放 55.56%'),
+      tooltip: expect.stringContaining('本次压缩范围'),
       ts: 123,
     });
 

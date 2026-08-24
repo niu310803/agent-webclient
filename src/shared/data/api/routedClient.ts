@@ -102,6 +102,7 @@ import {
 	type AutomationListResponse,
 	type CoderModelOptionsResponse,
 	type CompactChatResponse,
+	type CompactLevel,
 	type ToggleAutomationRequest,
 	type UpdateAgentRequest,
 	type UpdateAgentNameRequest,
@@ -695,6 +696,7 @@ export function learnChat(params: {
 export function compactChat(params: {
 	requestId: string;
 	chatId: string;
+	level?: CompactLevel;
 }): Promise<ApiResponse<CompactChatResponse>> {
 	return routeEndpoint(dataEndpoints.compact, params, () => compactChatHttp(params)).then((response) => {
 		invalidateRouteEndpoints(dataEndpoints.chats);

@@ -301,6 +301,15 @@ export function parseBTWSlashInput(input: string): string | null {
   return String(match[1] || "").trim();
 }
 
+export type CompactSlashAction = "chooser" | "l1_tools" | "summary";
+
+export function parseCompactSlashInput(input: string): CompactSlashAction | null {
+  const match = String(input || "").match(/^\/compact(?:\s+(tools|summary))?\s*$/i);
+  if (!match) return null;
+  if (!match[1]) return "chooser";
+  return match[1].toLowerCase() === "tools" ? "l1_tools" : "summary";
+}
+
 export function getLatestQueryText(nodes: TimelineNode[]): string {
   for (let i = nodes.length - 1; i >= 0; i -= 1) {
     const node = nodes[i];

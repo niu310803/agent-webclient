@@ -18,6 +18,7 @@ import type {
   AccessLevelUpdateParams,
   AdminSourceTarget,
   BackgroundCommandParams,
+  CompactChatParams,
   QueryLikeParams,
   QueryModelOverride,
   QueryServiceTier,
@@ -685,17 +686,17 @@ export const dataEndpoints = createEndpointRegistry({
         mode: options.mode,
       }),
   }),
-  compact: defineEndpoint<BackgroundCommandParams, Record<string, unknown>>({
+  compact: defineEndpoint<CompactChatParams, Record<string, unknown>>({
     key: "chat.compact",
     path: "/api/compact",
     method: "POST",
     transport: "auto",
     wsBackends: PLATFORM_WS_BACKENDS,
-    payload: ({ requestId, chatId }) => ({
+    payload: ({ requestId, chatId, level }) => ({
       requestId,
       chatId,
       trigger: "manual",
-      level: "summary",
+      level: level || "summary",
     }),
   }),
   detach: defineEndpoint({

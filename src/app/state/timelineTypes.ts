@@ -105,6 +105,7 @@ export interface TimelineNode {
 	reasoningLabel?: string;
 	planningId?: string;
 	title?: string;
+	tooltip?: string;
 	text?: string;
 	attachments?: TimelineAttachment[];
 	status?: string;

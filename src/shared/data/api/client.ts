@@ -2930,6 +2930,12 @@ export interface BackgroundCommandParams {
   chatId: string;
 }
 
+export type CompactLevel = "l1_tools" | "summary";
+
+export interface CompactChatParams extends BackgroundCommandParams {
+  level?: CompactLevel;
+}
+
 export interface CompactChatResponse {
   accepted: boolean;
   status: string;
@@ -2945,6 +2951,8 @@ export interface CompactChatResponse {
   preCompactEstimatedTokens?: number;
   postCompactEstimatedTokens?: number;
   compressionRatio?: number;
+  remainingRatio?: number;
+  releasedRatio?: number;
   compactionUsage?: Record<string, unknown>;
   toolsCleared?: number;
   toolsKept?: number;
@@ -3289,7 +3297,7 @@ export function learnChat(
 }
 
 export function compactChat(
-  params: BackgroundCommandParams,
+  params: CompactChatParams,
 ): Promise<ApiResponse<CompactChatResponse>> {
   return requestJson(dataEndpoints.compact.path, {
     method: "POST",

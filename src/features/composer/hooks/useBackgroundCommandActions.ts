@@ -13,6 +13,7 @@ import {
   learnChat,
   rememberChat,
   type CompactChatResponse,
+  type CompactLevel,
 } from "@/shared/data";
 import { useI18n } from "@/shared/i18n";
 
@@ -23,6 +24,8 @@ export interface BackgroundCommandTexts {
   error: string;
   waiting?: string;
   compacting?: string;
+  toolsCompacting?: string;
+  summaryCompacting?: string;
 }
 
 export interface BackgroundCommandTextMap {
@@ -49,6 +52,7 @@ interface RunBackgroundCommandInput {
   t: (key: string, params?: Record<string, unknown>) => string;
   texts: BackgroundCommandTexts;
   usageSnapshot: AIUsageSnapshotEvent | null;
+  compactLevel?: CompactLevel;
 }
 
 function isCompactCompleted(data: CompactChatResponse): boolean {
@@ -59,7 +63,7 @@ function isCompactNoHistory(data: CompactChatResponse): boolean {
   return (
     data.accepted === false &&
     data.status === "skipped" &&
-    data.detail === "no_compactable_history"
+    (data.detail === "no_compactable_history" || data.detail === "no_compactable_tools")
   );
 }
 
@@ -79,23 +83,43 @@ function compactFailureText(
   if (data.detail === "compact_in_progress") {
     return t("contextCompact.compactInProgress");
   }
+  if (data.detail === "summary_input_too_large") {
+    return t("contextCompact.summaryInputTooLarge");
+  }
+  if (data.detail === "summary_model_failed" || data.detail === "summary_empty") {
+    return t("contextCompact.summaryFailed");
+  }
   return t("contextCompact.failed", {
     detail: data.detail || data.status || t("contextCompact.unknownError"),
   });
+}
+
+function compactSkippedText(
+  data: CompactChatResponse,
+  t: (key: string, params?: Record<string, unknown>) => string,
+): string {
+  return data.detail === "no_compactable_tools"
+    ? t("contextCompact.noTools")
+    : t("contextCompact.noHistory");
 }
 
 function compactTimelineText(
   data: CompactChatResponse,
   t: (key: string, params?: Record<string, unknown>) => string,
 ): string {
+  const level = data.level || "summary";
   const source =
     data.summarySource === "deterministic_fallback"
       ? t("contextCompact.source.deterministicFallback")
       : t("contextCompact.source.model");
   const parts = [
-    t("contextCompact.completed"),
-    t("contextCompact.summarySource", { source }),
+    level === "l1_tools"
+      ? t("contextCompact.toolsCompleted")
+      : t("contextCompact.summaryCompleted"),
   ];
+  if (level === "summary") {
+    parts.push(t("contextCompact.summarySource", { source }));
+  }
   if (typeof data.originalMessages === "number" && data.originalMessages > 0) {
     parts.push(
       t("contextCompact.originalMessages", { count: data.originalMessages }),
@@ -106,10 +130,15 @@ function compactTimelineText(
       t("contextCompact.toolDigestCount", { count: data.toolDigestCount }),
     );
   }
-  if (typeof data.compressionRatio === "number" && data.compressionRatio > 0) {
+  const remainingRatio = readCompactNumber(data.remainingRatio)
+    ?? (typeof data.compressionRatio === "number" ? data.compressionRatio * 100 : null);
+  const releasedRatio = readCompactNumber(data.releasedRatio)
+    ?? (remainingRatio == null ? null : Math.max(0, 100 - remainingRatio));
+  if (remainingRatio != null && releasedRatio != null) {
     parts.push(
-      t("contextCompact.compressionRatio", {
-        ratio: Math.round(data.compressionRatio * 100),
+      t("contextCompact.reduction", {
+        remaining: remainingRatio.toFixed(2),
+        released: releasedRatio.toFixed(2),
       }),
     );
   }
@@ -199,6 +228,8 @@ function buildCompactCompleteEvent(
     preCompactEstimatedTokens: data.preCompactEstimatedTokens,
     postCompactEstimatedTokens: data.postCompactEstimatedTokens,
     compressionRatio: data.compressionRatio,
+    remainingRatio: data.remainingRatio,
+    releasedRatio: data.releasedRatio,
     elapsedMs: data.elapsedMs,
     compactionUsage: data.compactionUsage as AIContextCompactEvent["compactionUsage"],
     cacheMetrics: data.cacheMetrics,
@@ -218,12 +249,6 @@ function hasMatchingCompactEvent(
   });
 }
 
-function requestForCommand(commandType: BackgroundCommandType) {
-  if (commandType === "remember") return rememberChat;
-  if (commandType === "learn") return learnChat;
-  return compactChat;
-}
-
 export async function runBackgroundCommand(
   input: RunBackgroundCommandInput,
 ): Promise<void> {
@@ -239,6 +264,7 @@ export async function runBackgroundCommand(
     t,
     texts,
     usageSnapshot,
+    compactLevel = "summary",
   } = input;
   if (!chatId) {
     return;
@@ -256,10 +282,11 @@ export async function runBackgroundCommand(
   });
 
   try {
-    const response = await requestForCommand(commandType)({
-      requestId,
-      chatId,
-    });
+    const response = commandType === "compact"
+      ? await compactChat({ requestId, chatId, level: compactLevel })
+      : commandType === "remember"
+        ? await rememberChat({ requestId, chatId })
+        : await learnChat({ requestId, chatId });
     let successText = texts.pending;
     if (commandType === "compact") {
       if (!response.data) {
@@ -302,11 +329,9 @@ export async function runBackgroundCommand(
           dispatch({ type: "SET_USAGE_SNAPSHOT", snapshot: nextUsageSnapshot });
         }
       }
-      if (!completed || !completeEventReceived) {
+      if (completed && !completeEventReceived) {
         const nodeId = `compact_${compactData.compactId || requestId}`;
-        const text = completed
-          ? compactTimelineText(compactData, t)
-          : t("contextCompact.noHistory");
+        const text = compactTimelineText(compactData, t);
         dispatch({
           type: "SET_TIMELINE_NODE",
           id: nodeId,
@@ -316,6 +341,7 @@ export async function runBackgroundCommand(
             role: "system",
             messageVariant: "compact",
             text,
+            tooltip: t("contextCompact.reductionTooltip"),
             ts: now(),
           },
         });
@@ -323,7 +349,7 @@ export async function runBackgroundCommand(
       }
       successText = completed
         ? t("contextCompact.completed")
-        : t("contextCompact.noHistory");
+        : compactSkippedText(compactData, t);
     }
     dispatch({
       type: "APPEND_DEBUG",
@@ -379,9 +405,22 @@ export function useBackgroundCommandActions(input: {
       type: "SHOW_COMMAND_STATUS_OVERLAY",
       commandType: "compact",
       phase: "pending",
-      text: text.compact.compacting || text.compact.pending,
+      text:
+        (started.level === "l1_tools"
+          ? text.compact.toolsCompacting
+          : text.compact.summaryCompacting)
+        || text.compact.compacting
+        || text.compact.pending,
     });
-  }, [dispatch, state.events, submittingCommand, text.compact.compacting, text.compact.pending]);
+  }, [
+    dispatch,
+    state.events,
+    submittingCommand,
+    text.compact.compacting,
+    text.compact.pending,
+    text.compact.summaryCompacting,
+    text.compact.toolsCompacting,
+  ]);
 
   const scheduleCommandStatusOverlayHide = useCallback(() => {
     const timer = window.setTimeout(() => {
@@ -394,7 +433,7 @@ export function useBackgroundCommandActions(input: {
   }, [dispatch]);
 
   const submitBackgroundCommand = useCallback(
-    async (commandType: BackgroundCommandType) => {
+    async (commandType: BackgroundCommandType, compactLevel: CompactLevel = "summary") => {
       const chatId = String(state.chatId || "").trim();
       if (!chatId || submittingCommandRef.current) {
         return;
@@ -423,6 +462,7 @@ export function useBackgroundCommandActions(input: {
           t,
           texts: text[commandType],
           usageSnapshot: state.usageSnapshot,
+          compactLevel,
         });
       } finally {
         if (commandType === "compact") {
@@ -448,7 +488,7 @@ export function useBackgroundCommandActions(input: {
     submitBackgroundCommand,
     submitRememberCommand: () => submitBackgroundCommand("remember"),
     submitLearnCommand: () => submitBackgroundCommand("learn"),
-    submitCompactCommand: () => submitBackgroundCommand("compact"),
+    submitCompactCommand: (level: CompactLevel = "summary") => submitBackgroundCommand("compact", level),
     submittingCommand,
   };
 }

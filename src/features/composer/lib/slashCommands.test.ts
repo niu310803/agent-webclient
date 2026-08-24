@@ -6,6 +6,7 @@ import {
   getLatestQueryText,
   isSlashCommandDisabled,
   parseBTWSlashInput,
+  parseCompactSlashInput,
   shouldShowSlashCommandPalette,
 } from '@/features/composer/lib/slashCommands';
 
@@ -28,6 +29,13 @@ describe('slashCommands', () => {
   it('only opens for a standalone slash token', () => {
     expect(shouldShowSlashCommandPalette('/')).toBe(true);
     expect(shouldShowSlashCommandPalette('/re')).toBe(true);
+  });
+
+  it('parses compact chooser and direct level arguments', () => {
+    expect(parseCompactSlashInput('/compact')).toBe('chooser');
+    expect(parseCompactSlashInput('/compact tools')).toBe('l1_tools');
+    expect(parseCompactSlashInput('/compact summary')).toBe('summary');
+    expect(parseCompactSlashInput('/compact other')).toBeNull();
   });
 
   it('filters the command list by slash query', () => {

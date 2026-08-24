@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createElement, useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "react";
-import { App as AntdApp } from "antd";
+import { App as AntdApp, Button } from "antd";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 import type { AppAction } from "@/app/state/AppContext";
 import type { AppState } from "@/app/state/types";
 import {
   createRequestId,
+  type CompactLevel,
   type QueryAccessLevel,
   type QueryModelOverride,
 } from "@/shared/data";
@@ -21,7 +22,7 @@ import type {
   SlashCommandId,
   SlashPaletteItem,
 } from "@/features/composer/lib/slashCommands";
-import { parseBTWSlashInput } from "@/features/composer/lib/slashCommands";
+import { parseBTWSlashInput, parseCompactSlashInput } from "@/features/composer/lib/slashCommands";
 import { useBTW } from "@/features/btw/components/BtwProvider";
 import {
   normalizeSteerSubmissionResponse,
@@ -77,6 +78,8 @@ interface UseComposerSendInput {
     compactError: string;
     compactWaiting?: string;
     compactCompacting?: string;
+    compactToolsCompacting?: string;
+    compactSummaryCompacting?: string;
   };
   hasUploadingAttachments: boolean;
   inputValue: string;
@@ -160,7 +163,7 @@ export function useComposerSend(input: UseComposerSendInput) {
   } = input;
   const { t } = useI18n();
   const runs = useRunTransport();
-  const { message: messageApi } = AntdApp.useApp();
+  const { message: messageApi, modal } = AntdApp.useApp();
   const { openBTW } = useBTW();
   const [steerSubmitting, setSteerSubmitting] = useState(false);
   const pendingSendRef = useRef(false);
@@ -191,9 +194,31 @@ export function useComposerSend(input: UseComposerSendInput) {
         error: backgroundCommandText.compactError,
         waiting: backgroundCommandText.compactWaiting,
         compacting: backgroundCommandText.compactCompacting,
+        toolsCompacting: backgroundCommandText.compactToolsCompacting,
+        summaryCompacting: backgroundCommandText.compactSummaryCompacting,
       },
     },
   });
+
+  const openCompactChooser = useCallback(async () => {
+    let dialog: ReturnType<typeof modal.confirm>;
+    const run = (level: CompactLevel) => {
+      dialog.destroy();
+      void submitCompactCommand(level);
+    };
+    dialog = modal.confirm({
+      title: t("contextCompact.chooser.title"),
+      content: t("contextCompact.chooser.description"),
+      icon: null,
+      footer: () => createElement(
+        "div",
+        { style: { display: "flex", justifyContent: "flex-end", gap: 8 } },
+        createElement(Button, { onClick: () => dialog.destroy() }, t("contextCompact.chooser.cancel")),
+        createElement(Button, { onClick: () => run("l1_tools") }, t("topNav.usage.compactTools")),
+        createElement(Button, { type: "primary", onClick: () => run("summary") }, t("topNav.usage.compactSummary")),
+      ),
+    });
+  }, [modal, submitCompactCommand, t]);
 
   useEffect(() => {
     const message = inputValue.trim();
@@ -355,7 +380,7 @@ export function useComposerSend(input: UseComposerSendInput) {
     toggleVoiceMode: executeSlashCommandInput.toggleVoiceMode,
     submitRememberCommand,
     submitLearnCommand,
-    submitCompactCommand,
+    submitCompactCommand: openCompactChooser,
     setInputValue,
     setSlashDismissed,
     openBTW: () => {
@@ -392,6 +417,22 @@ export function useComposerSend(input: UseComposerSendInput) {
     }
     const currentState = stateRef.current || state;
     const activeChatId = String(currentState.chatId || "").trim();
+    const compactAction = parseCompactSlashInput(message);
+    if (compactAction !== null) {
+      if (!activeChatId) {
+        void messageApi.warning(t("contextCompact.noChat"));
+        return;
+      }
+      setInputValue("");
+      setSlashDismissed(false);
+      closeMention();
+      if (compactAction === "chooser") {
+        void openCompactChooser();
+      } else {
+        void submitCompactCommand(compactAction);
+      }
+      return;
+    }
     const btwMessage = parseBTWSlashInput(message);
     if (btwMessage !== null) {
       if (mustUseSkills.length > 0) {
@@ -540,6 +581,7 @@ export function useComposerSend(input: UseComposerSendInput) {
     mustUseSkillsAgentKey,
     mustUseSkills,
     messageApi,
+    openCompactChooser,
     openBTW,
     activeQuerySessionRequestIdRef,
     querySessionsRef,
@@ -562,6 +604,7 @@ export function useComposerSend(input: UseComposerSendInput) {
     state.workerSelectionKey,
     stateRef,
     stopSpeechInput,
+    submitCompactCommand,
     t,
   ]);
 

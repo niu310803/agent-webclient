@@ -23,10 +23,12 @@ import {
   isVoiceEnabled,
 } from "@/shared/config/featureFlags";
 import { formatPlatformErrorForDisplay } from "@/shared/data/errors/platformError";
+import type { CompactLevel } from "@/shared/data";
 import { tOrFallback, useI18n } from "@/shared/i18n";
 import { MaterialIcon } from "@/shared/ui/MaterialIcon";
 import { UiButton } from "@/shared/ui/UiButton";
-import { Divider, Flex, Popover, Typography } from "antd";
+import { Divider, Dropdown, Flex, Popover, Typography } from "antd";
+import type { MenuProps } from "antd";
 import { TextCountUp } from "@/shared/components/text-count-up";
 import { useSettingsOverlayState } from "@/features/settings/components/SettingsOverlayProvider";
 import { useCommandOverlayOpen } from "@/features/workers/components/CommandOverlayProvider";
@@ -443,12 +445,19 @@ function resolveChatEstimatedCost(
 
 const UsageContextWindow: React.FC<{
   compactDisabled: boolean;
-  onCompact: () => void;
+  onCompact: (level: CompactLevel) => void;
   snapshot: AIUsageSnapshotEvent | null;
   t: (key: string, values?: Record<string, string>) => string;
 }> = ({ compactDisabled, onCompact, snapshot, t }) => {
   const cacheHitPercent = resolveChatCacheHitPercent(snapshot);
   const cacheHitLabel = formatUsagePercent(cacheHitPercent);
+  const compactMenu: MenuProps = {
+    items: [
+      { key: "l1_tools", label: t("topNav.usage.compactTools") },
+      { key: "summary", label: t("topNav.usage.compactSummary") },
+    ],
+    onClick: ({ key }) => onCompact(key as CompactLevel),
+  };
 
   return (
     <div className={USAGE_CONTEXT_WINDOW_CLASS}>
@@ -459,17 +468,18 @@ const UsageContextWindow: React.FC<{
           {" / "}
           {formatUsageNumber(snapshot?.contextWindow?.maxSize)}
         </strong>
-        <UiButton
-          className={USAGE_CONTEXT_COMPACT_BTN_CLASS}
-          variant="ghost"
-          size="sm"
-          disabled={compactDisabled}
-          aria-label={t("topNav.usage.compact")}
-          title={t("topNav.usage.compact")}
-          onClick={onCompact}
-        >
-          {t("topNav.usage.compact")}
-        </UiButton>
+        <Dropdown menu={compactMenu} trigger={["click"]} disabled={compactDisabled}>
+          <UiButton
+            className={USAGE_CONTEXT_COMPACT_BTN_CLASS}
+            variant="ghost"
+            size="sm"
+            disabled={compactDisabled}
+            aria-label={t("topNav.usage.compact")}
+            title={t("topNav.usage.compact")}
+          >
+            {t("topNav.usage.compact")}
+          </UiButton>
+        </Dropdown>
       </div>
 
       <div
@@ -705,6 +715,8 @@ export const TopNav: React.FC<{ surface?: "root" | "agent" }> = ({
           error: t("composer.background.compact.error"),
           waiting: t("composer.background.compact.waiting"),
           compacting: t("composer.background.compact.compacting"),
+          toolsCompacting: t("composer.background.compact.toolsCompacting"),
+          summaryCompacting: t("composer.background.compact.summaryCompacting"),
         },
       },
     });

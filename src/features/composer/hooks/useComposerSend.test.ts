@@ -61,6 +61,8 @@ const createRequestIdMock = createRequestId as jest.Mock;
 
 function testT(key: string, params?: Record<string, unknown>): string {
   if (key === 'contextCompact.completed') return 'Context compacted';
+  if (key === 'contextCompact.toolsCompleted') return 'Tool context compacted';
+  if (key === 'contextCompact.summaryCompleted') return 'Context summary generated';
   if (key === 'contextCompact.failed') {
     return `Context compaction failed: ${String(params?.detail || '')}`;
   }
@@ -77,8 +79,8 @@ function testT(key: string, params?: Record<string, unknown>): string {
   if (key === 'contextCompact.toolDigestCount') {
     return `Tool result summaries: ${String(params?.count || '')}`;
   }
-  if (key === 'contextCompact.compressionRatio') {
-    return `Compression ratio: ${String(params?.ratio || '')}%`;
+  if (key === 'contextCompact.reduction') {
+    return `Context remaining ${String(params?.remaining || '')}% / released ${String(params?.released || '')}%`;
   }
   return key;
 }
@@ -241,6 +243,7 @@ describe('runBackgroundCommand compact behavior', () => {
     expect(compactChatMock).toHaveBeenCalledWith({
       requestId: 'compact_request',
       chatId: 'chat-1',
+      level: 'summary',
     });
     expect(dispatch).toHaveBeenCalledWith({
       type: 'SHOW_COMMAND_STATUS_OVERLAY',
@@ -285,7 +288,7 @@ describe('runBackgroundCommand compact behavior', () => {
         kind: 'message',
         role: 'system',
         messageVariant: 'compact',
-        text: expect.stringContaining('Context compacted'),
+        text: expect.stringContaining('Context summary generated'),
         ts: 12345,
       }),
     });
@@ -294,6 +297,47 @@ describe('runBackgroundCommand compact behavior', () => {
       id: 'compact_compact-1',
     });
     expect(scheduleCommandStatusOverlayHide).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits L1 explicitly and renders released and remaining percentages', async () => {
+    compactChatMock.mockResolvedValue({
+      data: {
+        accepted: true,
+        status: 'completed',
+        chatId: 'chat-1',
+        compactId: 'compact-tools-1',
+        level: 'l1_tools',
+        toolsCleared: 3,
+        toolsKept: 1,
+        remainingRatio: 1.18,
+        releasedRatio: 98.82,
+        postCompactEstimatedTokens: 2334,
+      },
+    });
+    const dispatch = jest.fn();
+    await runBackgroundCommand({
+      chatId: 'chat-1',
+      commandType: 'compact',
+      compactLevel: 'l1_tools',
+      dispatch,
+      events: [],
+      scheduleCommandStatusOverlayHide: jest.fn(),
+      t: testT,
+      texts: { pending: 'Compacting', error: 'Failed' },
+      usageSnapshot: null,
+    });
+
+    expect(compactChatMock).toHaveBeenCalledWith({
+      requestId: 'compact_request',
+      chatId: 'chat-1',
+      level: 'l1_tools',
+    });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'SET_TIMELINE_NODE',
+      node: expect.objectContaining({
+        text: expect.stringContaining('Context remaining 1.18% / released 98.82%'),
+      }),
+    }));
   });
 
   it('does not synthesize a duplicate completion when the stream already delivered it', async () => {
@@ -358,7 +402,7 @@ describe('runBackgroundCommand compact behavior', () => {
     });
   });
 
-  it('writes a compact timeline node without usage updates when compact is skipped', async () => {
+  it('does not write a success timeline node or usage update when compact is skipped', async () => {
     compactChatMock.mockResolvedValue({
       data: {
         accepted: false,
@@ -390,15 +434,9 @@ describe('runBackgroundCommand compact behavior', () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
       type: 'SET_USAGE_SNAPSHOT',
     }));
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
       type: 'SET_TIMELINE_NODE',
-      id: 'compact_compact_request',
-      node: expect.objectContaining({
-        messageVariant: 'compact',
-        text: 'No history context to compact',
-        ts: 999,
-      }),
-    });
+    }));
   });
 
   it('shows a retry error without completion state when compact history changed', async () => {

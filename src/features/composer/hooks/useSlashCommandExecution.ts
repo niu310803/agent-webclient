@@ -10,6 +10,7 @@ import {
 import { useSettingsOverlayActions } from "@/features/settings/components/SettingsOverlayProvider";
 import { useCommandOverlayActions } from "@/features/workers/components/CommandOverlayProvider";
 import { useOpenTarget } from "@/features/surfaces/openTarget";
+import type { CompactLevel } from "@/shared/data";
 
 export function useSlashCommandExecution(input: {
 	slashAvailability: SlashCommandAvailability;
@@ -20,7 +21,7 @@ export function useSlashCommandExecution(input: {
 	toggleVoiceMode: () => void;
 	submitRememberCommand: () => Promise<void>;
 	submitLearnCommand: () => Promise<void>;
-	submitCompactCommand: () => Promise<void>;
+	submitCompactCommand: (level?: CompactLevel) => Promise<void>;
 	setInputValue: (value: string) => void;
 	setSlashDismissed: (dismissed: boolean) => void;
 	openBTW: () => void;

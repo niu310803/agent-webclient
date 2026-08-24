@@ -152,6 +152,9 @@ export function applyLiveEventCommand(input: {
 				kind: "message",
 				role: "system",
 				text: command.text,
+				...(command.cmd === "SYSTEM_MESSAGE" && command.tooltip
+					? { tooltip: command.tooltip }
+					: {}),
 				...(command.cmd === "SYSTEM_ERROR" && command.errorDetail
 					? { errorDetail: command.errorDetail }
 					: {}),
@@ -166,6 +169,9 @@ export function applyLiveEventCommand(input: {
 					kind: "message",
 					role: "system",
 					text: command.text,
+					...(command.cmd === "SYSTEM_MESSAGE" && command.tooltip
+						? { tooltip: command.tooltip }
+						: {}),
 					...(command.cmd === "SYSTEM_ERROR" && command.errorDetail
 						? { errorDetail: command.errorDetail }
 						: {}),

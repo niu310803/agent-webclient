@@ -484,6 +484,8 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
       compactError: t("composer.background.compact.error"),
       compactWaiting: t("composer.background.compact.waiting"),
       compactCompacting: t("composer.background.compact.compacting"),
+      compactToolsCompacting: t("composer.background.compact.toolsCompacting"),
+      compactSummaryCompacting: t("composer.background.compact.summaryCompacting"),
     },
     clearComposerAttachments,
     clearMustUseSkills: () => setSelectedSkills([]),

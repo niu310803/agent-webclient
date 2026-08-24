@@ -73,18 +73,23 @@ export function processRunEvent(
     const nodeId = `compact_${compactId}`;
     if (state.getTimelineNode(nodeId)) return commands;
     const source = toText(event.summarySource) || "unknown";
+    const level = toText(event.level) || "summary";
     const digestCount = Number((event as Record<string, unknown>).toolDigestCount ?? 0);
     const originalMessages = Number((event as Record<string, unknown>).originalMessages ?? 0);
     const compressionRatio = Number((event as Record<string, unknown>).compressionRatio ?? 0);
     const textParts = [
-      t("contextCompact.completed"),
-      t("contextCompact.summarySource", {
+      level === "l1_tools"
+        ? t("contextCompact.toolsCompleted")
+        : t("contextCompact.summaryCompleted"),
+    ];
+    if (level === "summary") {
+      textParts.push(t("contextCompact.summarySource", {
         source:
           source === "deterministic_fallback"
             ? t("contextCompact.source.deterministicFallback")
             : t("contextCompact.source.model"),
-      }),
-    ];
+      }));
+    }
     if (Number.isFinite(originalMessages) && originalMessages > 0) {
       textParts.push(
         t("contextCompact.originalMessages", { count: originalMessages }),
@@ -95,10 +100,16 @@ export function processRunEvent(
         t("contextCompact.toolDigestCount", { count: digestCount }),
       );
     }
-    if (Number.isFinite(compressionRatio) && compressionRatio > 0) {
+    const rawRemainingRatio = (event as Record<string, unknown>).remainingRatio;
+    const rawReleasedRatio = (event as Record<string, unknown>).releasedRatio;
+    const hasReduction = rawRemainingRatio != null || rawReleasedRatio != null || compressionRatio > 0;
+    const remainingRatio = Number(rawRemainingRatio ?? compressionRatio * 100);
+    const releasedRatio = Number(rawReleasedRatio ?? (100 - remainingRatio));
+    if (hasReduction && Number.isFinite(remainingRatio) && Number.isFinite(releasedRatio) && remainingRatio >= 0 && releasedRatio >= 0) {
       textParts.push(
-        t("contextCompact.compressionRatio", {
-          ratio: Math.round(compressionRatio * 100),
+        t("contextCompact.reduction", {
+          remaining: remainingRatio.toFixed(2),
+          released: releasedRatio.toFixed(2),
         }),
       );
     }
@@ -106,6 +117,9 @@ export function processRunEvent(
       cmd: "SYSTEM_MESSAGE",
       nodeId,
       text: textParts.join(" · "),
+      ...(hasReduction
+        ? { tooltip: t("contextCompact.reductionTooltip") }
+        : {}),
       ts: timestamp,
     });
     return commands;

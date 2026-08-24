@@ -74,4 +74,4 @@ export type EventCommand =
 			ts: number;
 			errorDetail?: TimelineNode["errorDetail"];
 	  }
-	| { cmd: "SYSTEM_MESSAGE"; nodeId: string; text: string; ts: number };
+	| { cmd: "SYSTEM_MESSAGE"; nodeId: string; text: string; tooltip?: string; ts: number };

@@ -68,8 +68,9 @@ type CopyState = "idle" | "copied" | "error";
 
 export const SystemAlert: React.FC<{
   text: string;
+  tooltip?: string;
   errorDetail?: TimelineErrorDetail;
-}> = ({ text, errorDetail }) => {
+}> = ({ text, tooltip, errorDetail }) => {
   const { t } = useI18n();
   const showDetails = hasTechnicalDetail(errorDetail);
   const rows = [
@@ -118,7 +119,13 @@ export const SystemAlert: React.FC<{
   return (
     <div className="system-alert">
       <Flex justify="space-between" align="center" gap={6}>
-        <div className="system-alert-message">{text}</div>
+        {tooltip ? (
+          <Tooltip title={tooltip}>
+            <div className="system-alert-message">{text}</div>
+          </Tooltip>
+        ) : (
+          <div className="system-alert-message">{text}</div>
+        )}
         <Tooltip title={copyTooltip}>
           <UiButton
             className="system-alert-copy-btn"
