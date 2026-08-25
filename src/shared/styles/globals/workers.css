@@ -177,7 +177,6 @@
     height: max(70vh, 600px);
     min-height: 0;
     overflow: hidden;
-    padding-top: 8px;
 }
 
 .worker-history-modal .command-modal-section {

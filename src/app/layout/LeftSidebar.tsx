@@ -53,9 +53,7 @@ import {
   deleteAgent,
   getAgent,
   getAgents,
-  getChats,
   markChatRead,
-  searchGlobal,
   updateAgentName,
 } from "@/shared/data";
 import { mergeFetchedChats } from "@/features/chats/lib/chatSummary";
@@ -64,26 +62,17 @@ import {
   isWorkerAttentionChat,
 } from "@/features/chats/lib/chatRunState";
 import { resolveSidebarChatRuntime } from "@/features/runs/lib/runRuntimeState";
-import type { AppState, Chat, WorkerConversationRow, WorkerListItem } from "@/app/state/types";
+import type { AppState, WorkerConversationRow, WorkerListItem } from "@/app/state/types";
 import { openRegisteredAgentDirectory } from "@/shared/data/desktop/desktopFileSystem";
 import { canOpenWorkerWorkspace } from "@/features/workers/lib/workerWorkspace";
 import { buildWorkerRows } from "@/features/workers/lib/workerListFormatter";
 import { splitWorkerListItems } from "@/features/workers/lib/workerDataCoordinator";
 import { useTerminalAgentStatuses } from "@/features/terminal/hooks/useActiveTerminalAgents";
-import { readEpochMillis } from "@/shared/utils/platformTime";
 import {
   buildAgentCopyInfoGroups,
   type AgentCopySummary,
 } from "@/features/workers/lib/agentCopyInfo";
 import type { AgentDetailResponse } from "@/shared/data";
-
-function findChatIndex(rows: WorkerConversationRow[], chatId: string): number {
-  const normalizedChatId = String(chatId || "").trim();
-  if (!normalizedChatId) return -1;
-  return rows.findIndex(
-    (row) => String(row.chatId || "").trim() === normalizedChatId,
-  );
-}
 
 function workspaceNameFromPath(path: string): string {
   const normalized = String(path || "").trim();
@@ -229,12 +218,7 @@ export const LeftSidebar: React.FC = () => {
   const navigation = selectNavigationState(state);
   const isSidebarLoading = navigation.sidebarPendingRequestCount > 0;
   const [expandedWorkerKey, setExpandedWorkerKey] = useState("");
-  const [historyWorkerKey, setHistoryWorkerKey] = useState("");
-  const [historySearch, setHistorySearch] = useState("");
-  const [remoteHistoryRows, setRemoteHistoryRows] = useState<
-    WorkerConversationRow[] | null
-  >(null);
-  const [historyIndex, setHistoryIndex] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [agentCopyTarget, setAgentCopyTarget] = useState<AgentCopySummary | null>(null);
   const [agentCopyDetail, setAgentCopyDetail] = useState<AgentDetailResponse | null>(null);
@@ -246,89 +230,25 @@ export const LeftSidebar: React.FC = () => {
   }, []);
   const [workerSortMode, setWorkerSortMode] =
     useState<WorkerSortMode>("byTime");
-  const historyInputRef = useRef<HTMLInputElement>(null);
-  const historyListRef = useRef<HTMLDivElement>(null);
-  const historyItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const {
     filteredWorkerRows,
     workerIconsByKey,
     workerChatsByKey,
     workerUnreadCountByKey,
     workerTotalCountByKey,
-    filteredHistoryRows,
   } = useLeftSidebarData({
     agents: state.agents,
     chatFilter: state.chatFilter,
     chats: state.chats,
-    historySearch,
-    historyWorkerKey,
     teams: state.teams,
     temporaryPinnedAgentKey: state.temporaryPinnedAgentKey,
     workerRows: state.workerRows,
     workerSortMode,
   });
 
-  const historyWorker =
-    state.workerIndexByKey.get(historyWorkerKey) ||
-    state.workerRows.find((row) => row.key === historyWorkerKey) ||
-    null;
-
-  useEffect(() => {
-    const query = historySearch.trim();
-    if (!historyWorkerKey || !historyWorker || !query) {
-      setRemoteHistoryRows(null);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      const params =
-        historyWorker.type === "team"
-          ? { query, teamId: historyWorker.sourceId, limit: 30 }
-          : { query, agentKey: historyWorker.sourceId, limit: 30 };
-      void searchGlobal(params)
-        .then((response) => {
-          const results = Array.isArray(response.data?.results)
-            ? response.data.results
-            : [];
-          setRemoteHistoryRows(
-            results
-              .map((result) => ({
-                chatId: String(result.chatId || ""),
-                chatName: String(result.chatName || ""),
-                agentKey: result.agentKey,
-                teamId: result.teamId,
-                updatedAt: readEpochMillis(result.timestamp) ?? 0,
-                lastRunId: String(result.runId || ""),
-                lastRunContent: String(result.snippet || ""),
-                searchSnippet: String(result.snippet || ""),
-                isRead: true,
-              }))
-              .filter((row) => row.chatId),
-          );
-        })
-        .catch((error) => {
-          dispatch({
-            type: "APPEND_DEBUG",
-            line: `[search error] ${(error as Error).message}`,
-          });
-          setRemoteHistoryRows([]);
-        });
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [dispatch, historySearch, historyWorker, historyWorkerKey]);
-
   useEffect(() => {
     setExpandedWorkerKey(state.workerSelectionKey);
   }, [state.workerSelectionKey]);
-
-  useEffect(() => {
-    if (!historyWorkerKey) return;
-    historyInputRef.current?.focus();
-    historyInputRef.current?.select();
-  }, [historyWorkerKey]);
-
-  useEffect(() => {
-    historyItemRefs.current[historyIndex]?.scrollIntoView({ block: "nearest" });
-  }, [historyIndex]);
 
   useEffect(() => {
     if (!settingsMenuOpen) return;
@@ -432,78 +352,23 @@ export const LeftSidebar: React.FC = () => {
     }
   };
 
-  const openHistoryForWorker = useCallback(
-    (workerKey: string) => {
-      const normalizedWorkerKey = String(workerKey || "").trim();
-      if (!normalizedWorkerKey) return;
-      const workerChats = workerChatsByKey.get(normalizedWorkerKey) || [];
-      const currentChatIndex = findChatIndex(workerChats, state.chatId);
-      setHistoryWorkerKey(normalizedWorkerKey);
-      setHistorySearch("");
-      setRemoteHistoryRows(null);
-      setHistoryIndex(currentChatIndex >= 0 ? currentChatIndex : 0);
+  const openHistory = useCallback(() => {
+    setHistoryOpen(true);
+  }, []);
 
-      const worker =
-        state.workerIndexByKey.get(normalizedWorkerKey) ||
-        state.workerRows.find((item) => item.key === normalizedWorkerKey);
-      if (!worker) return;
-
-      void getChats(worker.type === "agent" ? { agentKey: worker.sourceId } : undefined)
-        .then((response) => {
-          const fetchedChats = (
-            Array.isArray(response.data) ? response.data : []
-          ) as Chat[];
-          const chats = mergeFetchedChats(stateRef.current.chats, fetchedChats);
-          dispatch({ type: "SET_CHATS", chats });
-        })
-        .catch((error) => {
-          dispatch({
-            type: "APPEND_DEBUG",
-            line: `[loadChats error] ${(error as Error).message}`,
-          });
-        });
-    },
-    [
-      dispatch,
-      state.chatId,
-      state.workerIndexByKey,
-      state.workerRows,
-      stateRef,
-      workerChatsByKey,
-    ],
-  );
-
-  const handleOpenHistory = (
-    event: React.MouseEvent<Element>,
-    workerKey: string,
-  ) => {
+  const handleOpenHistory = (event: React.MouseEvent<Element>) => {
     event.stopPropagation();
-    openHistoryForWorker(workerKey);
-  };
-
-  const handleHistoryWorkerChange = (workerKey: string) => {
-    const normalizedWorkerKey = String(workerKey || "").trim();
-    if (!normalizedWorkerKey || normalizedWorkerKey === historyWorkerKey) return;
-    openHistoryForWorker(normalizedWorkerKey);
-    setHistoryIndex(0);
+    openHistory();
   };
 
   useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = ((event as CustomEvent).detail || {}) as {
-        workerKey?: unknown;
-        agentKey?: unknown;
-      };
-      const agentKey = String(detail.agentKey || "").trim();
-      const workerKey = String(
-        detail.workerKey || (agentKey ? `agent:${agentKey}` : ""),
-      ).trim();
-      openHistoryForWorker(workerKey);
+    const handler = () => {
+      openHistory();
     };
     window.addEventListener("agent:open-worker-history", handler);
     return () =>
       window.removeEventListener("agent:open-worker-history", handler);
-  }, [openHistoryForWorker]);
+  }, [openHistory]);
 
   const handleMarkWorkerAllRead = async (
     event: React.MouseEvent<HTMLElement>,
@@ -727,10 +592,7 @@ export const LeftSidebar: React.FC = () => {
   };
 
   const handleCloseHistory = () => {
-    setHistoryWorkerKey("");
-    setHistorySearch("");
-    setHistoryIndex(0);
-    setRemoteHistoryRows(null);
+    setHistoryOpen(false);
   };
 
   const handleSettingsMenuAction = (action: SidebarSettingsMenuAction) => {
@@ -1261,39 +1123,9 @@ export const LeftSidebar: React.FC = () => {
       </aside>
 
       <SidebarHistorySection
-        open={Boolean(historyWorkerKey)}
-        historyWorker={historyWorker}
-        workerRows={state.workerRows}
-        workerIconsByKey={workerIconsByKey}
-        historyRows={remoteHistoryRows ?? filteredHistoryRows}
-        historyIndex={historyIndex}
-        historySearch={historySearch}
-        historyInputRef={historyInputRef}
-        historyListRef={historyListRef}
-        historyItemRefs={historyItemRefs}
+        open={historyOpen}
         onClose={handleCloseHistory}
-        onHistoryWorkerChange={handleHistoryWorkerChange}
-        onHistorySearchChange={(value) => {
-          setHistorySearch(value);
-          setHistoryIndex(0);
-          if (!value.trim()) {
-            setRemoteHistoryRows(null);
-          }
-        }}
-        onActivateIndex={setHistoryIndex}
         onSelectChat={handleSelectChat}
-        onMarkAllRead={
-          historyWorker?.type === "agent"
-            ? (event) => handleMarkWorkerAllRead(event, historyWorker.key)
-            : undefined
-        }
-        onChatDeleted={(chatId) => {
-          setRemoteHistoryRows((rows) =>
-            rows
-              ? rows.filter((row) => String(row.chatId || "") !== chatId)
-              : rows,
-          );
-        }}
       />
 
       <CopyInfoModal

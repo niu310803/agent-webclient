@@ -11,7 +11,6 @@ export interface CommandOverlayState {
   open: boolean;
   type: CommandOverlayType | null;
   searchText: string;
-  historySearch: string;
   activeIndex: number;
   scope: CommandOverlayScope;
   focusArea: CommandOverlayFocusArea;
@@ -36,7 +35,6 @@ export function createCommandOverlayState(
     open: Boolean(options),
     type: options?.type ?? null,
     searchText: options?.searchText ?? "",
-    historySearch: options?.historySearch ?? "",
     activeIndex: options?.activeIndex ?? 0,
     scope: options?.scope ?? "all",
     focusArea: options?.focusArea ?? "search",

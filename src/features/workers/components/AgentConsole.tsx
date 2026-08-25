@@ -80,6 +80,7 @@ import {
 import { AGENT_ICON_NAMES, AgentIcon } from "@/shared/icons/agent";
 import { buildModelMenuItems } from "@/features/composer/components/QuerySettingsControls";
 import { MaterialIcon, type MaterialIconName } from "@/shared/ui/MaterialIcon";
+import { ModalTitleBar } from "@/shared/ui/ModalTitleBar";
 import { UiButton } from "@/shared/ui/UiButton";
 import { useI18n, type I18nContextValue } from "@/shared/i18n";
 
@@ -151,6 +152,8 @@ interface AgentConsoleProps {
   selectedAgentKey?: string;
   onSelectAgentKey?: (agentKey: string) => void;
   onClearSelection?: () => void;
+  onClose?: () => void;
+  titleBarVariant?: "default" | "drawer";
   onDirtyChange?: (dirty: boolean) => void;
   embedded?: boolean;
 }
@@ -1562,6 +1565,8 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
   selectedAgentKey = "",
   onSelectAgentKey,
   onClearSelection,
+  onClose,
+  titleBarVariant = "default",
   onDirtyChange,
   embedded = false,
 }) => {
@@ -2624,6 +2629,13 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     <div
       className={`${embedded ? "command-modal-section" : "management-page-console"} ${AGENT_CONSOLE_CLASS_NAME} ${embedded ? "is-embedded" : ""}`}
     >
+      {embedded ? (
+        <ModalTitleBar
+          title={t("commandModal.agents.title")}
+          variant={titleBarVariant}
+          onClose={() => onClose?.()}
+        />
+      ) : null}
       <AgentCreateModal
         open={createModalOpen}
         t={t}

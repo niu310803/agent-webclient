@@ -32,6 +32,7 @@ export interface Chat {
 	updatedAt?: number;
 	lastRunId?: string;
 	lastRunContent?: string;
+	searchSnippet?: string;
 	read?: ChatReadState;
 	awaiting?: ChatAwaitingSummary | null;
 	hasPendingAwaiting?: boolean;

@@ -53,7 +53,7 @@ export const WorkerConversationPreviewList: React.FC<{
   totalChatCount?: number;
   getWorkerChatLoading: (chatId: string) => boolean;
   onSelectChat: (chatId: string) => void;
-  onOpenHistory: (event: React.MouseEvent<Element>, workerKey: string) => void;
+  onOpenHistory: (event: React.MouseEvent<Element>) => void;
   onStartNewConversation: (
     e: React.MouseEvent<HTMLElement>,
     workerKey: string,
@@ -296,7 +296,7 @@ export const WorkerConversationPreviewList: React.FC<{
       {showMoreCount > 5 && (
         <div
           className={WORKER_CHAT_MORE_CLASS}
-          onClick={(e) => onOpenHistory(e, row.key)}
+          onClick={(e) => onOpenHistory(e)}
         >
           {t("leftSidebar.showMore", {
             count: showMoreCount,

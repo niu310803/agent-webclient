@@ -59,13 +59,12 @@ jest.mock("@/app/layout/LeftSidebar", () => ({
 }));
 
 jest.mock("@/app/layout/sidebar/SidebarHistorySection", () => ({
-  SidebarHistorySection: ({ open, historyRows }: any) =>
+  SidebarHistorySection: ({ open }: any) =>
     open
       ? React.createElement(
           "section",
           {
             className: "worker-history-modal",
-            "data-history-count": historyRows.length,
           },
           "history",
         )

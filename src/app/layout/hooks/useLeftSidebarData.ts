@@ -103,8 +103,6 @@ export function useLeftSidebarData({
   agents,
   chatFilter,
   chats,
-  historySearch,
-  historyWorkerKey,
   teams,
   temporaryPinnedAgentKey,
   workerRows,
@@ -118,8 +116,6 @@ export function useLeftSidebarData({
   | "temporaryPinnedAgentKey"
   | "workerRows"
 > & {
-  historySearch: string;
-  historyWorkerKey: string;
   workerSortMode?: WorkerSortMode;
 }) {
   const workerBaseOrderByKey = useMemo(
@@ -225,22 +221,6 @@ export function useLeftSidebarData({
     return totalCounts;
   }, [agents, teams, workerChatsByKey, workerRows]);
 
-  const historyRows = useMemo(
-    () => workerChatsByKey.get(historyWorkerKey) || [],
-    [historyWorkerKey, workerChatsByKey],
-  );
-
-  const filteredHistoryRows = useMemo(() => {
-    const search = historySearch.trim().toLowerCase();
-    if (!search) return historyRows;
-    return historyRows.filter((row) => {
-      const haystack = [row.chatName, row.chatId, row.lastRunContent]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(search);
-    });
-  }, [historyRows, historySearch]);
-
   return {
     filteredWorkerRows,
     workerBaseOrderByKey,
@@ -248,7 +228,5 @@ export function useLeftSidebarData({
     workerChatsByKey,
     workerUnreadCountByKey,
     workerTotalCountByKey,
-    historyRows,
-    filteredHistoryRows,
   };
 }

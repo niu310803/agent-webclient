@@ -239,6 +239,11 @@
 
 .layout-copilot .history-list-action-time {
     font-size: 12px;
+    top: 9px;
+}
+
+.layout-copilot .history-list-actions {
+    background: color-mix(in srgb, var(--bg-elevated, var(--bg-base)) 92%, transparent);
 }
 
 .layout-copilot .command-modal-section {

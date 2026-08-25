@@ -19,6 +19,19 @@ jest.mock("@/shared/i18n", () => ({
   }),
 }));
 
+jest.mock("@/app/state/AppContext", () => ({
+  useAppState: () => ({
+    chatId: "",
+    chats: [],
+    chatAgentById: new Map(),
+    workerSelectionKey: "",
+    workerRows: [],
+    workerIndexByKey: new Map(),
+    agents: [],
+    teams: [],
+  }),
+}));
+
 jest.mock("@/shared/icons/agent", () => {
   const React = require("react");
   return {

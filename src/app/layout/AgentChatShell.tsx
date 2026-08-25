@@ -8,7 +8,7 @@ import React, {
 import { message } from "antd";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAppDispatch, useAppState } from "@/app/state/AppContext";
-import type { Agent, Chat, WorkerConversationRow } from "@/app/state/types";
+import type { Agent } from "@/app/state/types";
 import { TopNav } from "@/app/layout/TopNav";
 import { BottomDock } from "@/app/layout/BottomDock";
 import { ConversationStage } from "@/features/timeline/components/ConversationStage";
@@ -17,11 +17,8 @@ import { SettingsOverlayProvider } from "@/features/settings/components/Settings
 import { CommandOverlayProvider } from "@/features/workers/components/CommandOverlayProvider";
 import { GlobalSearchOverlayProvider } from "@/features/search/components/GlobalSearchOverlayProvider";
 import { useAppRuntimes } from "@/app/layout/hooks/useAppRuntimes";
-import { SidebarHistorySection } from "@/app/layout/sidebar/SidebarHistorySection";
-import { useLeftSidebarData } from "@/app/layout/hooks/useLeftSidebarData";
-import { getAgent, getChats } from "@/shared/data";
+import { getAgent } from "@/shared/data";
 import { ApiError } from "@/shared/data/api/client";
-import { mergeFetchedChats } from "@/features/chats/lib/chatSummary";
 import { useI18n } from "@/shared/i18n";
 import { upsertAgentSummary } from "@/features/workers/lib/agentSummary";
 import { buildSurfaceRoute, readSurfacePresentationContext } from "@/features/surfaces/surfaceRoutes";
@@ -293,15 +290,6 @@ export const AgentChatShell: React.FC = () => {
   const navigate = useNavigate();
   const params = useParams<{ agentKey?: string }>();
   const [searchParams] = useSearchParams();
-  const [historyWorkerKey, setHistoryWorkerKey] = useState("");
-  const [historySearch, setHistorySearch] = useState("");
-  const [remoteHistoryRows, setRemoteHistoryRows] = useState<
-    WorkerConversationRow[] | null
-  >(null);
-  const [historyIndex, setHistoryIndex] = useState(0);
-  const historyInputRef = useRef<HTMLInputElement>(null);
-  const historyListRef = useRef<HTMLDivElement>(null);
-  const historyItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const stateRef = useRef(state);
   const lastInitializedAgentKeyRef = useRef("");
   const lastLoadedChatKeyRef = useRef("");
@@ -368,24 +356,10 @@ export const AgentChatShell: React.FC = () => {
     (state.timelineOrder.length > 0 || state.streaming || Boolean(state.runId));
   const routeChatReady =
     !chatId || currentStateChatId === chatId || routeHasVisibleConversation;
-  const { filteredHistoryRows, workerChatsByKey, workerIconsByKey } = useLeftSidebarData({
-    agents: state.agents,
-    chatFilter: state.chatFilter,
-    chats: state.chats,
-    historySearch,
-    historyWorkerKey,
-    teams: state.teams,
-    temporaryPinnedAgentKey: state.temporaryPinnedAgentKey,
-    workerRows: state.workerRows,
-  });
-  const historyWorker =
-    state.workerIndexByKey.get(historyWorkerKey) ||
-    state.workerRows.find((row) => row.key === historyWorkerKey) ||
-    null;
   const hasVisibleConversationContent =
     state.timelineOrder.length > 0 || state.streaming || Boolean(state.runId);
 
-  const { loadAgents, refreshWorkerData } = useAppRuntimes({
+  const { loadAgents } = useAppRuntimes({
     initialWorkerRefreshEnabled: false,
   });
 
@@ -780,81 +754,6 @@ export const AgentChatShell: React.FC = () => {
     pendingNewChatResendVersion,
   ]);
 
-  const openRouteHistoryForWorker = useCallback(
-    (workerKey: string) => {
-      const normalizedWorkerKey = String(workerKey || "").trim();
-      if (!normalizedWorkerKey) return;
-      const workerChats = workerChatsByKey.get(normalizedWorkerKey) || [];
-      const currentChatIndex = workerChats.findIndex(
-        (row) =>
-          String(row.chatId || "") === String(stateRef.current.chatId || ""),
-      );
-      setHistoryWorkerKey(normalizedWorkerKey);
-      setHistorySearch("");
-      setRemoteHistoryRows(null);
-      setHistoryIndex(currentChatIndex >= 0 ? currentChatIndex : 0);
-
-      void refreshWorkerData()
-        .then(() => {
-          const worker =
-            stateRef.current.workerIndexByKey.get(normalizedWorkerKey) ||
-            stateRef.current.workerRows.find(
-              (item) => item.key === normalizedWorkerKey,
-            );
-          if (!worker) return null;
-          return getChats(
-            worker.type === "agent" ? { agentKey: worker.sourceId } : undefined,
-          );
-        })
-        .then((response) => {
-          if (!response) return;
-          const fetchedChats = (
-            Array.isArray(response.data) ? response.data : []
-          ) as Chat[];
-          const chats = mergeFetchedChats(stateRef.current.chats, fetchedChats);
-          dispatch({ type: "SET_CHATS", chats });
-        })
-        .catch((error) => {
-          dispatch({
-            type: "APPEND_DEBUG",
-            line: `[loadChats error] ${(error as Error).message}`,
-          });
-        });
-    },
-    [dispatch, refreshWorkerData, workerChatsByKey],
-  );
-
-  useEffect(() => {
-    if (!historyWorkerKey) return;
-    historyInputRef.current?.focus();
-    historyInputRef.current?.select();
-  }, [historyWorkerKey]);
-
-  const handleCloseHistory = () => {
-    setHistoryWorkerKey("");
-    setHistorySearch("");
-    setHistoryIndex(0);
-    setRemoteHistoryRows(null);
-  };
-
-  const handleHistoryWorkerChange = (workerKey: string) => {
-    const normalizedWorkerKey = String(workerKey || "").trim();
-    if (!normalizedWorkerKey || normalizedWorkerKey === historyWorkerKey) return;
-    openRouteHistoryForWorker(normalizedWorkerKey);
-    setHistoryIndex(0);
-  };
-
-  const handleSelectHistoryChat = (selectedChatId: string) => {
-    window.dispatchEvent(
-      new CustomEvent("agent:load-chat", {
-        detail: {
-          chatId: selectedChatId,
-          focusComposerOnComplete: true,
-        },
-      }),
-    );
-  };
-
   const isTimelineEmpty = useMemo(() => !state.chatId, [state.chatId]);
 
   if (!routeAgentReady) {
@@ -896,36 +795,6 @@ export const AgentChatShell: React.FC = () => {
           />
           <BottomDock />
           <ShellOverlays />
-          <SidebarHistorySection
-            open={Boolean(historyWorkerKey)}
-            historyWorker={historyWorker}
-            workerRows={state.workerRows}
-            workerIconsByKey={workerIconsByKey}
-            historyRows={remoteHistoryRows ?? filteredHistoryRows}
-            historyIndex={historyIndex}
-            historySearch={historySearch}
-            historyInputRef={historyInputRef}
-            historyListRef={historyListRef}
-            historyItemRefs={historyItemRefs}
-            onClose={handleCloseHistory}
-            onHistoryWorkerChange={handleHistoryWorkerChange}
-            onHistorySearchChange={(value) => {
-              setHistorySearch(value);
-              setHistoryIndex(0);
-              if (!value.trim()) {
-                setRemoteHistoryRows(null);
-              }
-            }}
-            onActivateIndex={setHistoryIndex}
-            onSelectChat={handleSelectHistoryChat}
-            onChatDeleted={(deletedChatId) => {
-              setRemoteHistoryRows((rows) =>
-                rows
-                  ? rows.filter((row) => String(row.chatId || "") !== deletedChatId)
-                  : rows,
-              );
-            }}
-          />
         </div>
       </GlobalSearchOverlayProvider>
       </CommandOverlayProvider>

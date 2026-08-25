@@ -44,6 +44,7 @@ import type {
 } from "@/shared/data";
 import { MaterialIcon, type MaterialIconName } from "@/shared/ui/MaterialIcon";
 import { AgentIcon } from "@/shared/icons/agent";
+import { ModalTitleBar } from "@/shared/ui/ModalTitleBar";
 import { SearchFilterBar } from "@/shared/ui/SearchFilterBar";
 import { UiButton } from "@/shared/ui/UiButton";
 import { UiTag } from "@/shared/ui/UiTag";
@@ -613,6 +614,8 @@ export const AutomationModal: React.FC<{
   embedded?: boolean;
   editorOnly?: boolean;
   initialAutomationId?: string;
+  onClose?: () => void;
+  titleBarVariant?: "default" | "drawer";
   onSaved?: (automationId: string) => void;
   onDeleted?: (automationId: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
@@ -623,6 +626,8 @@ export const AutomationModal: React.FC<{
   embedded = false,
   editorOnly = false,
   initialAutomationId = "",
+  onClose,
+  titleBarVariant = "default",
   onSaved,
   onDeleted,
   onDirtyChange,
@@ -1496,6 +1501,13 @@ export const AutomationModal: React.FC<{
     <div
       className={`${embedded ? "command-modal-section" : "management-page-console"} ${AUTOMATION_CONSOLE_CLASS_NAME} ${editorOnly ? "is-editor-only" : ""}`}
     >
+      {embedded ? (
+        <ModalTitleBar
+          title={t("commandModal.automation.title")}
+          variant={titleBarVariant}
+          onClose={() => onClose?.()}
+        />
+      ) : null}
       {error && (
         <div className={AUTOMATION_ERROR_CLASS_NAME}>
           <span>{error}</span>

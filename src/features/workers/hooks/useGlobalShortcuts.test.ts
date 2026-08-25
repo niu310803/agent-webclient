@@ -66,7 +66,6 @@ jest.mock("@/features/workers/components/CommandOverlayProvider", () => ({
     open: false,
     type: null,
     searchText: "",
-    historySearch: "",
     activeIndex: 0,
     scope: "all" as const,
     focusArea: "search" as const,
