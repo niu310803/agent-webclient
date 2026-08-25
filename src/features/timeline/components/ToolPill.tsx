@@ -406,7 +406,7 @@ export const ToolPill: React.FC<ToolPillProps> = ({ node, toolGroup }) => {
         setExpanded(!expanded);
       }}
       label={
-        <Flex align="center" gap={6}>
+        <Flex align="center" gap={6} className="tw:text-[13px]">
           <span className="tool-pill-label" title={toolLabel}>
             {toolLabel}
           </span>

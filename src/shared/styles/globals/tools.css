@@ -34,7 +34,7 @@
 .tool-pill-duration {
     color: color-mix(in srgb, var(--ink-muted) 78%, transparent);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     white-space: nowrap;
 }
 
@@ -67,7 +67,7 @@
 }
 
 .tool-call-title {
-    font-size: 10px;
+    font-size: 12px;
     font-family: var(--font-mono);
     font-weight: 600;
     letter-spacing: 0.08em;
@@ -125,7 +125,7 @@
 }
 
 .tool-call-note {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.5;
     color: var(--ink-muted);
     white-space: pre-wrap;
@@ -135,7 +135,7 @@
 .tool-call-result {
     margin: 0;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.5;
     color: var(--text-muted);
 }
@@ -168,7 +168,7 @@
     top: -26px;
     right: 0;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .tool-call-copy .ui-btn-label {

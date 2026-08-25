@@ -65,11 +65,11 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ node }) => {
   return (
     <TimelineCollapse
       label={
-        <span className="tw:inline-flex tw:items-center tw:gap-1.5">
+        <span className="tw:inline-flex tw:items-center tw:gap-1.5 tw:text-[13px]">
           {isLoading ? (
             <>
               <Skeleton active={true} text={triggerLabel} />
-              <span className="tw:text-text-sub tw:opacity-60 tw:text-[11px]">
+              <span className="tw:text-text-sub tw:opacity-60 tw:text-[12px]">
                 {durationLabel}
               </span>
             </>
