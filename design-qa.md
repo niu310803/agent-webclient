@@ -97,3 +97,62 @@ final result: passed
 ## Result
 
 Passed for the Automation Execution V2 implementation. Repository-wide pre-existing checks are recorded above and are outside this change's scope.
+
+---
+
+# Automation Execution V2 Follow-up Design QA
+
+## Comparison metadata
+
+- source visual truth paths: `/var/folders/55/s3kqdyn95hvdh736dhw502200000gn/T/codex-clipboard-0528354b-45b8-48ef-98ba-3d03b2b3d7a8.png`, `/var/folders/55/s3kqdyn95hvdh736dhw502200000gn/T/codex-clipboard-ac66a9d9-3bd9-4bf5-a769-acba66c8e53e.png`, and `/var/folders/55/s3kqdyn95hvdh736dhw502200000gn/T/codex-clipboard-df048949-66d6-4f54-a0d7-1cc6a94df02c.png`
+- browser-rendered implementation: `/private/tmp/automation-v2-followup-final.png`
+- full-view comparison: `/private/tmp/automation-v2-followup-final-compare.png`
+- focused list-item comparison: `/private/tmp/automation-v2-followup-compare-item.png`
+- viewport: `1778 x 510` CSS px at device scale factor 1; the rendered console was `1778 x 510` pixels
+- normalization: the reference main-area capture was scaled from `1508 x 510` to `1470 x 490`; the implementation main area was cropped at `x=298, y=10, width=1470, height=490`. The reference item crop was normalized from a 2x `586 x 150` region to `288 x 74`; the implementation item used a `288 x 74` crop.
+- state: deterministic local QA data with a ready history service, four Automations, resolved Agent/Team display names, seven executions, and the latest success expanded. The delivered `11950` preview uses the same HTTP/WebSocket contracts as the formal page.
+
+## Findings
+
+- No actionable P0, P1, or P2 visual differences remain after the requested follow-up changes.
+- Fonts and typography: automation names, run times, statuses, previews, and section headings use the 14px primary size; schedules, timestamps, counters, durations, metadata, and labels use the 12px supporting size. The selected Automation name computes to `14px / 400`, with no bold treatment.
+- Spacing and layout rhythm: the sidebar keeps the compact 288px track; the search and single plus button share one row; each Automation item uses exactly three information rows. Parsed Cron is left-aligned while Agent/Team icon and display name are right-aligned. The selected background remains subtle with no leading vertical line.
+- Colors and visual tokens: enabled state uses one small semantic green dot. Last-trigger text remains muted; only the trailing completion icon receives semantic status color. Existing Webclient background, ink, accent, and line tokens are preserved.
+- Image and icon fidelity: all visible icons use `MaterialIcon` or `AgentIcon`; no replacement assets, hand-drawn SVGs, or placeholder graphics were introduced. When worker catalog data is temporarily unavailable, the UI hides the raw Agent key and uses `--` until the display name resolves.
+- Copy and content: the chronological-review subtitle was removed. The detail header is now an execution overview rather than a duplicate of the Automation definition. Edit, enable/disable, delete, and more-settings actions are all directly visible; duplicate remains inside more settings.
+
+## Comparison history
+
+- Iteration 1 — [P2] the sidebar repeated an Automation title/count, used a full-width New button, and marked selection with a blue vertical rail. Fix: removed the redundant heading, moved a single plus button beside search, and removed the rail.
+- Iteration 1 — [P2] Automation items mixed worker IDs and trigger details across two loose rows. Fix: established the required three-row hierarchy and hid raw worker IDs.
+- Iteration 1 — [P2] the main header repeated Automation name, schedule, worker, and next-run configuration. Fix: replaced it with run overview metrics and four explicit management actions; removed the Recent runs subtitle.
+- Iteration 2 — [P2] supporting typography still used 9–11px sizes and the Automation name remained bold. Fix: standardized primary text at 14px, supporting text at 12px, and set Automation names to weight 400.
+- Iteration 2 — [P2] enabled and last-run status overemphasized green check/text. Fix: enabled now uses one dot; last-trigger text is muted and the semantic result icon follows the timestamp.
+- Iteration 2 — [P2] Cron and worker did not occupy opposing edges of the second row. Fix: added `justify-content: space-between` while preserving truncation and compact density.
+- Final pass: the normalized focused comparison confirms no selection rail, regular-weight name, dot-only enabled state, left/right second-row alignment, muted last-trigger time, and trailing status icon.
+
+## Primary interactions and runtime checks
+
+- Search filtering reduced the Automation list to the single matching item and restored the full list after clearing.
+- More settings opened successfully and exposed Duplicate.
+- The newest execution remained expanded by default, and the timeline preserved status, duration, preview, metadata, full-result, and conversation actions.
+- Final browser console error check returned no errors.
+- Automation-focused Jest suites passed: 3 suites, 45 tests.
+- Production Webpack build passed with only existing bundle-size warnings.
+- Repository-wide i18n, boundary, and full Jest failures remain unrelated baseline issues documented in the preceding report.
+
+## Implementation checklist
+
+- [x] Remove redundant sidebar title/count
+- [x] Search plus single icon-only create action
+- [x] Three-row Automation item and no selection rail
+- [x] 14px primary / 12px supporting typography
+- [x] Regular-weight Automation name
+- [x] Dot-only enabled status
+- [x] Cron left / worker right alignment
+- [x] Muted last-trigger timestamp with trailing status icon
+- [x] Execution overview and four direct management actions
+- [x] Remove chronological-review subtitle
+- [x] Final browser visual, interaction, and console checks
+
+final result: passed

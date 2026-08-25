@@ -88,9 +88,9 @@ function automationWorkerLabel(
   teamById: Map<string, Team>,
 ): string {
   const teamId = String(item.teamId || "").trim();
-  if (teamId) return String(teamById.get(teamId)?.name || teamId);
+  if (teamId) return String(teamById.get(teamId)?.name || "--");
   const agentKey = String(item.agentKey || "").trim();
-  return String(agentByKey.get(agentKey)?.name || agentKey || "--");
+  return String(agentByKey.get(agentKey)?.name || "--");
 }
 
 function AutomationEditorDrawer({
@@ -685,30 +685,14 @@ export function AutomationHistoryConsole({
     });
   };
 
-  const actionMenu: MenuProps = {
+  const moreSettingsMenu: MenuProps = {
     items: selected
       ? [
-          {
-            key: "toggle",
-            icon: <MaterialIcon name={selected.enabled ? "pause_circle" : "play_circle"} />,
-            label: selected.enabled
-              ? t("automationConsole.action.disable")
-              : t("automationConsole.action.enable"),
-            onClick: () => void toggleSelected(),
-          },
           {
             key: "copy",
             icon: <MaterialIcon name="content_copy" />,
             label: t("automationConsole.action.copy"),
             onClick: () => void duplicateSelected(),
-          },
-          { type: "divider" },
-          {
-            key: "delete",
-            danger: true,
-            icon: <MaterialIcon name="delete" />,
-            label: t("automationConsole.action.delete"),
-            onClick: deleteSelected,
           },
         ]
       : [],
@@ -724,38 +708,46 @@ export function AutomationHistoryConsole({
         className={`${styles.automationItem} ${item.id === selectedId ? styles.active : ""}`}
         onClick={() => selectAutomation(item.id)}
       >
-        <span className={styles.itemIcon}>
-          {item.teamId ? (
-            <MaterialIcon name="hub" />
-          ) : (
-            <AgentIcon
-              icon={agent?.icon}
-              type="agent"
-              props={{
-                icon: { width: 22, height: 22 },
-                avatar: { size: 22, icon: <MaterialIcon name="smart_toy" /> },
-              }}
-            />
-          )}
-        </span>
         <span className={styles.itemCopy}>
           <span className={styles.itemTitleRow}>
-            <strong title={item.name || item.id}>{item.name || item.id}</strong>
+            <span className={styles.itemName} title={item.name || item.id}>
+              {item.name || item.id}
+            </span>
             <span className={`${styles.enableState} ${item.enabled ? styles.enabled : ""}`}>
-              <MaterialIcon name={item.enabled ? "check" : "pause_circle"} />
+              <span className={styles.enableDot} aria-hidden="true" />
               {item.enabled
                 ? t("automationConsole.status.enabled")
                 : t("automationHistory.status.paused")}
             </span>
           </span>
           <span className={styles.itemSchedule}>
-            {describeCronExpression(item.cron, t)} · {automationWorkerLabel(item, agentByKey, teamById)}
+            <span>{describeCronExpression(item.cron, t)}</span>
+            <span className={styles.itemWorker}>
+              {item.teamId ? (
+                <MaterialIcon name="hub" />
+              ) : (
+                <AgentIcon
+                  icon={agent?.icon}
+                  type="agent"
+                  props={{
+                    icon: { width: 14, height: 14 },
+                    avatar: { size: 14, icon: <MaterialIcon name="smart_toy" /> },
+                  }}
+                />
+              )}
+              {automationWorkerLabel(item, agentByKey, teamById)}
+            </span>
           </span>
           <span className={styles.itemLast}>
-            <span>{item.agentKey || item.teamId || "--"}</span>
-            <span className={last ? styles[last.status] : ""}>
-              {last ? <MaterialIcon name={STATUS_ICON[last.status]} /> : null}
-              {last?.startedTime || t("automationHistory.last.never")}
+            <span>
+              {last
+                ? t("automationHistory.last.label", { time: last.startedTime || "--" })
+                : t("automationHistory.last.never")}
+              {last ? (
+                <span className={`${styles.lastStatus} ${styles[last.status]}`}>
+                  <MaterialIcon name={STATUS_ICON[last.status]} />
+                </span>
+              ) : null}
             </span>
           </span>
         </span>
@@ -767,29 +759,30 @@ export function AutomationHistoryConsole({
     <div className={styles.console}>
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHead}>
-          <div className={styles.sidebarTitleRow}>
-            <h1>{t("route.title.automations")}</h1>
-            <span>{automations.length}</span>
+          <div className={styles.sidebarSearchRow}>
+            <Input
+              allowClear
+              prefix={<MaterialIcon name="search" />}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t("automationConsole.searchPlaceholder")}
+            />
+            <Tooltip title={t("automationConsole.action.new")}>
+              <UiButton
+                size="sm"
+                variant="primary"
+                iconOnly
+                className={`${styles.newButton} ui-icon-hover-24`}
+                aria-label={t("automationConsole.action.new")}
+                onClick={() => {
+                  setEditorAutomationId("");
+                  setEditorOpen(true);
+                }}
+              >
+                <MaterialIcon name="add" />
+              </UiButton>
+            </Tooltip>
           </div>
-          <Input
-            allowClear
-            prefix={<MaterialIcon name="search" />}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={t("automationConsole.searchPlaceholder")}
-          />
-          <UiButton
-            size="sm"
-            variant="primary"
-            className={styles.newButton}
-            onClick={() => {
-              setEditorAutomationId("");
-              setEditorOpen(true);
-            }}
-          >
-            <MaterialIcon name="add" />
-            {t("automationConsole.action.new")}
-          </UiButton>
         </div>
 
         <div className={styles.automationList}>
@@ -827,45 +820,80 @@ export function AutomationHistoryConsole({
         {selected ? (
           <>
             <header className={styles.mainHeader}>
-              <div className={styles.headingCopy}>
-                <span className={styles.headingIcon}>
-                  <MaterialIcon name={selected.teamId ? "hub" : "schedule"} />
+              <div className={styles.overviewCopy}>
+                <span className={styles.overviewIcon}>
+                  <MaterialIcon name="bar_chart" />
                 </span>
-                <div>
-                  <h2>{selected.name || selected.id}</h2>
-                  <p>
-                    <span>{describeCronExpression(selected.cron, t)}</span>
-                    <span>·</span>
-                    <span>{automationWorkerLabel(selected, agentByKey, teamById)}</span>
-                    <span className={styles.nextFire}>
-                      {t("automationHistory.nextFire", {
-                        time: selected.nextFireTime || "--",
-                      })}
+                <div className={styles.overviewContent}>
+                  <h2>{t("automationHistory.overview.title")}</h2>
+                  <div className={styles.overviewStats}>
+                    <span>
+                      <small>{t("automationHistory.overview.total")}</small>
+                      <strong>{executionTotal}</strong>
                     </span>
-                  </p>
+                    <span>
+                      <small>{t("automationHistory.overview.last")}</small>
+                      <strong className={selected.lastExecution ? styles[selected.lastExecution.status] : ""}>
+                        {selected.lastExecution
+                          ? t(`automationHistory.status.${selected.lastExecution.status}`)
+                          : t("automationHistory.last.never")}
+                      </strong>
+                    </span>
+                    <span>
+                      <small>{t("automationHistory.overview.next")}</small>
+                      <strong>{selected.nextFireTime || "--"}</strong>
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className={styles.headerActions}>
                 <UiButton
                   size="sm"
                   variant="secondary"
+                  className="ui-icon-hover-24"
                   onClick={() => {
                     setEditorAutomationId(selected.id);
                     setEditorOpen(true);
                   }}
                 >
-                  <MaterialIcon name="edit" />
+                  <MaterialIcon name="edit" className="ui-icon-hover-24-target" />
                   {t("automationHistory.action.edit")}
                 </UiButton>
-                <Dropdown menu={actionMenu} trigger={["click"]} placement="bottomRight">
+                <UiButton
+                  size="sm"
+                  variant="ghost"
+                  className="ui-icon-hover-24"
+                  disabled={actionBusy}
+                  onClick={() => void toggleSelected()}
+                >
+                  <MaterialIcon
+                    name={selected.enabled ? "pause_circle" : "play_circle"}
+                    className="ui-icon-hover-24-target"
+                  />
+                  {selected.enabled
+                    ? t("automationConsole.action.disable")
+                    : t("automationConsole.action.enable")}
+                </UiButton>
+                <UiButton
+                  size="sm"
+                  variant="ghost"
+                  className={`${styles.deleteAction} ui-icon-hover-24`}
+                  disabled={actionBusy}
+                  onClick={deleteSelected}
+                >
+                  <MaterialIcon name="delete" className="ui-icon-hover-24-target" />
+                  {t("automationConsole.action.delete")}
+                </UiButton>
+                <Dropdown menu={moreSettingsMenu} trigger={["click"]} placement="bottomRight">
                   <UiButton
                     size="sm"
                     variant="ghost"
-                    iconOnly
+                    className="ui-icon-hover-24"
                     loading={actionBusy}
-                    aria-label={t("automationHistory.action.more")}
+                    aria-label={t("automationHistory.action.moreSettings")}
                   >
-                    <MaterialIcon name="more_horiz" />
+                    <MaterialIcon name="more_horiz" className="ui-icon-hover-24-target" />
+                    {t("automationHistory.action.moreSettings")}
                   </UiButton>
                 </Dropdown>
               </div>
@@ -873,10 +901,7 @@ export function AutomationHistoryConsole({
 
             <div className={styles.historyBody}>
               <div className={styles.historyHeading}>
-                <div>
-                  <h3>{t("automationHistory.title")}</h3>
-                  <p>{t("automationHistory.subtitle")}</p>
-                </div>
+                <h3>{t("automationHistory.title")}</h3>
                 <div className={styles.historyHeadingActions}>
                   <span>{t("automationHistory.count", { count: executionTotal })}</span>
                   <Tooltip title={t("automationConsole.action.refresh")}>
@@ -884,6 +909,7 @@ export function AutomationHistoryConsole({
                       size="sm"
                       variant="ghost"
                       iconOnly
+                      className="ui-icon-hover-24"
                       aria-label={t("automationConsole.action.refresh")}
                       onClick={() => void loadAutomationList(selected.id)}
                       disabled={executionLoading}
@@ -962,7 +988,6 @@ export function AutomationHistoryConsole({
                                 >
                                   <time>{automationExecutionTimeLabel(item, locale)}</time>
                                   <span className={`${styles.status} ${styles[item.status]}`}>
-                                    <MaterialIcon name={STATUS_ICON[item.status]} />
                                     {t(`automationHistory.status.${item.status}`)}
                                   </span>
                                   <span className={styles.duration}>
