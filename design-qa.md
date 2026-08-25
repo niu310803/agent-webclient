@@ -52,3 +52,48 @@
 - No P3 polish is required for this scope.
 
 final result: passed
+
+---
+
+# Automation Execution V2 Design QA
+
+## Scope
+
+- Route: `/automations`
+- Reference: `exec-e93be3f4-2350-4ab6-8072-c5a4c1c9deaa.png`
+- Target: existing Webclient theme, Ant Design primitives, MaterialIcon/AgentIcon, compact high-density typography, low-border hierarchy
+
+## Visual comparison
+
+- Compared the reference and the implemented React page at the same 1488×1058 viewport in one side-by-side image.
+- The implementation preserves the reference information architecture: Automation list, selected header, date-grouped timeline, expanded metadata, full-result action.
+- The implementation intentionally reduces the reference spacing to the approved density: 288px sidebar, 64px header, 48px Execution rows, 10–12px supporting text.
+- Borders are limited to the sidebar split, header split, timeline spine, and row separators. Expanded details use only a very light background and spacing.
+- Result preview stays inside the Execution summary and is clamped to two lines; the expanded region does not repeat assistant output.
+
+## Interaction checks
+
+- Default selection and default expansion: passed.
+- Execution status/time/duration/preview layout: passed.
+- Full result lazy-load Drawer with Markdown, copy actions, Query disclosure, and conversation action: passed.
+- Editor Drawer with existing structured/source editor and unsaved-change confirmation: passed.
+- Desktop 1488px layout: passed.
+- 820px stacked layout with independently scrolling Automation list: passed.
+- 520px compact layout: passed.
+- Result and editor Drawer widths: passed.
+
+## Engineering checks
+
+- Production Webpack build: passed with only the repository's existing bundle-size warnings.
+- Added Automation API request test: passed.
+- Added endpoint registry tests: passed.
+- Added Execution view helper tests: passed.
+- Existing `AutomationModal` regression suite: 22/22 passed after the shared editor integration.
+- Full Jest run: 198/213 suites and 1857/1897 tests passed; the remaining 15 suites/40 tests are unrelated repository baseline failures outside Automation.
+- i18n additions are paired in English and Chinese. The repository-wide i18n command remains blocked by unrelated pre-existing hardcoded strings in other features.
+- The repository-wide boundary command remains blocked by an unrelated existing `runs -> transport` import violation.
+- The top-level `npm run build` remains blocked before Webpack by an existing Desktop contract mirror mismatch; direct `npm run build:web` passed.
+
+## Result
+
+Passed for the Automation Execution V2 implementation. Repository-wide pre-existing checks are recorded above and are outside this change's scope.

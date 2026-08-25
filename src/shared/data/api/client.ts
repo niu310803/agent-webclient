@@ -242,6 +242,7 @@ export interface AutomationListRequest {
 export interface AutomationListResponse {
   items: AutomationSummaryResponse[];
   total: number;
+  executionHistory: AutomationExecutionHistoryStatus;
 }
 
 export interface AutomationExecutionListResponse {
@@ -267,7 +268,26 @@ export interface AutomationSummaryResponse {
 
 export interface AutomationDetailResponse extends AutomationSummaryResponse {
   query: AutomationQueryResponse;
+  executionHistory: AutomationExecutionHistoryStatus;
 }
+
+export type AutomationExecutionHistoryState =
+  | "initializing"
+  | "ready"
+  | "degraded"
+  | "unavailable";
+
+export interface AutomationExecutionHistoryStatus {
+  available: boolean;
+  state: AutomationExecutionHistoryState;
+  message?: string;
+}
+
+export type AutomationExecutionStatus =
+  | "running"
+  | "success"
+  | "failed"
+  | "canceled";
 
 export interface AutomationQueryResponse {
   message: string;
@@ -279,9 +299,16 @@ export interface AutomationQueryResponse {
 
 export interface AutomationExecutionBrief {
   id: string;
-  status: string;
+  status: AutomationExecutionStatus;
+  zoneId: string;
+  chatId?: string;
+  runId?: string;
+  finishReason?: string;
+  hasResult: boolean;
+  resultPreview?: string;
   startedAt: number;
   startedTime?: string;
+  runStartedAt?: number;
   completedAt?: number;
   completedTime?: string;
   durationMs?: number;
@@ -293,15 +320,28 @@ export interface AutomationExecutionResponse {
   automationId: string;
   automationName: string;
   sourceFile: string;
-  agentKey: string;
-  teamId: string;
-  status: string;
+  agentKey?: string;
+  teamId?: string;
+  status: AutomationExecutionStatus;
   error: string;
+  zoneId: string;
+  chatId?: string;
+  runId?: string;
+  finishReason?: string;
+  hasResult: boolean;
+  resultPreview?: string;
   startedAt: number;
   startedTime?: string;
+  runStartedAt?: number;
   completedAt?: number;
   completedTime?: string;
   durationMs?: number;
+}
+
+export interface AutomationExecutionDetailResponse
+  extends AutomationExecutionResponse {
+  queryContent: string;
+  resultContent: string;
 }
 
 export interface AutomationQueryRequest {
@@ -350,6 +390,10 @@ export interface AutomationExecutionsRequest {
   id: string;
   limit?: number;
   offset?: number;
+}
+
+export interface AutomationExecutionRequest {
+  executionId: string;
 }
 
 export type AdminRegistryCategory =
@@ -2667,6 +2711,15 @@ export function getAutomationExecutions(
   params: AutomationExecutionsRequest,
 ): Promise<ApiResponse<AutomationExecutionListResponse>> {
   return postJson<AutomationExecutionListResponse>(dataEndpoints.automationExecutions.path, params);
+}
+
+export function getAutomationExecution(
+  params: AutomationExecutionRequest,
+): Promise<ApiResponse<AutomationExecutionDetailResponse>> {
+  return postJson<AutomationExecutionDetailResponse>(
+    dataEndpoints.automationExecution.path,
+    params,
+  );
 }
 
 export interface GetMemoryRecordsParams {

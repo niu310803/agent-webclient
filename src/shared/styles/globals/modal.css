@@ -494,6 +494,25 @@
 
 .automation-console-body {}
 
+.automation-console.is-editor-only .automation-console-error {
+    margin-bottom: 8px;
+}
+
+.automation-console-body.is-editor-only {
+    display: block;
+    overflow: auto;
+}
+
+.automation-console-body.is-editor-only>.automation-console-list,
+.automation-console.is-editor-only #automation-section-executions {
+    display: none;
+}
+
+.automation-console-body.is-editor-only .automation-console-detail {
+    height: 100%;
+    padding: 0 4px;
+}
+
 /* MCP 连接器页：宽屏时左侧列表固定为 280px，窄屏时转为单列。 */
 .mcp-servers-console .automation-console-body {
     grid-template-columns: 280px minmax(0, 1fr);

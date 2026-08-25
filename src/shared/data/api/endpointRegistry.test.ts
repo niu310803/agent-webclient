@@ -24,6 +24,10 @@ describe("endpoint WebSocket capabilities", () => {
     expect(dataEndpoints.agentOrder.transport).toBe("http");
     expect(dataEndpoints.adminRegistries.transport).toBe("http");
     expect(dataEndpoints.automations.transport).toBe("http");
+    expect(dataEndpoints.automations.method).toBe("POST");
+    expect(dataEndpoints.automation.method).toBe("POST");
+    expect(dataEndpoints.automationExecutions.method).toBe("POST");
+    expect(dataEndpoints.automationExecution.method).toBe("POST");
     expect(dataEndpoints.upload.transport).toBe("http");
     expect(dataEndpoints.resource.transport).toBe("resource");
   });

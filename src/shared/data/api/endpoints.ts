@@ -549,7 +549,7 @@ export const dataEndpoints = createEndpointRegistry({
   automation: defineEndpoint({
     key: "automation.detail",
     path: "/api/automation",
-    method: "GET",
+    method: "POST",
     transport: "http",
   }),
   automationCreate: defineEndpoint({
@@ -567,7 +567,13 @@ export const dataEndpoints = createEndpointRegistry({
   automationExecutions: defineEndpoint({
     key: "automation.executions",
     path: "/api/automation/executions",
-    method: "GET",
+    method: "POST",
+    transport: "http",
+  }),
+  automationExecution: defineEndpoint({
+    key: "automation.execution",
+    path: "/api/automation/execution",
+    method: "POST",
     transport: "http",
   }),
   automationToggle: defineEndpoint({
@@ -585,7 +591,7 @@ export const dataEndpoints = createEndpointRegistry({
   automations: defineEndpoint({
     key: "automations.list",
     path: "/api/automations",
-    method: "GET",
+    method: "POST",
     transport: "http",
   }),
   chat: defineEndpoint<

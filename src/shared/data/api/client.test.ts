@@ -80,6 +80,7 @@ import {
   getMemoryScopes,
   getModelOptions,
   getAutomation,
+  getAutomationExecution,
   getAutomationExecutions,
   getAutomations,
   previewMemoryContext,
@@ -686,6 +687,7 @@ describe('data client query payloads', () => {
     });
     await toggleAutomation({ id: 'daily-demo', enabled: false });
     await getAutomationExecutions({ id: 'daily-demo', limit: 20 });
+    await getAutomationExecution({ executionId: 'execution-1' });
     await deleteAutomation({ id: 'daily-demo' });
 
     const calls = fetchMock.mock.calls.map(([url, options]) => ({
@@ -716,6 +718,7 @@ describe('data client query payloads', () => {
       },
       { url: '/api/automation/toggle', body: { id: 'daily-demo', enabled: false } },
       { url: '/api/automation/executions', body: { id: 'daily-demo', limit: 20 } },
+      { url: '/api/automation/execution', body: { executionId: 'execution-1' } },
       { url: '/api/automation/delete', body: { id: 'daily-demo' } },
     ]);
   });

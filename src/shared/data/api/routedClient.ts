@@ -33,6 +33,7 @@ import {
 	getMemoryScopes as getMemoryScopesHttp,
 	getModelOptions as getModelOptionsHttp,
 	getAutomation as getAutomationHttp,
+	getAutomationExecution as getAutomationExecutionHttp,
 	getAutomationExecutions as getAutomationExecutionsHttp,
 	getAutomations as getAutomationsHttp,
 	normalizeChatSummariesPayload,
@@ -96,7 +97,9 @@ import {
 	type RenameChatRequest,
 	type RenameChatResponse,
 	type AutomationDetailResponse,
+	type AutomationExecutionDetailResponse,
 	type AutomationExecutionListResponse,
+	type AutomationExecutionRequest,
 	type AutomationExecutionsRequest,
 	type AutomationListRequest,
 	type AutomationListResponse,
@@ -540,6 +543,12 @@ export function getAutomationExecutions(
 	params: AutomationExecutionsRequest,
 ): Promise<ApiResponse<AutomationExecutionListResponse>> {
 	return getAutomationExecutionsHttp(params);
+}
+
+export function getAutomationExecution(
+	params: AutomationExecutionRequest,
+): Promise<ApiResponse<AutomationExecutionDetailResponse>> {
+	return getAutomationExecutionHttp(params);
 }
 
 export function getMemoryRecords(

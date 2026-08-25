@@ -3,6 +3,7 @@ import { ConfigProvider, theme as antdTheme, App as AntdApp } from "antd";
 import {
   createBrowserRouter,
   useLocation,
+  useNavigate,
   Outlet,
   RouterProvider,
 } from "react-router-dom";
@@ -114,11 +115,39 @@ const InteractiveRoute: React.FC<{
   <BtwProvider enabled={btwEnabled}>{children}</BtwProvider>
 );
 
+const AutomationConversationIntentBridge: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const routeState = location.state as
+      | { automationConversation?: { chatId?: unknown } }
+      | null;
+    const chatId = String(routeState?.automationConversation?.chatId || "").trim();
+    if (!chatId) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      window.dispatchEvent(
+        new CustomEvent("agent:load-chat", {
+          detail: { chatId, focusComposerOnComplete: false },
+        }),
+      );
+      navigate(`${location.pathname}${location.search}`, {
+        replace: true,
+        state: null,
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, location.search, location.state, navigate]);
+
+  return null;
+};
+
 const RootInteractiveRoute: React.FC = () => {
   useStandaloneDesktopActionRuntime();
   return (
     <InteractiveRoute>
       <AppShell />
+      <AutomationConversationIntentBridge />
     </InteractiveRoute>
   );
 };

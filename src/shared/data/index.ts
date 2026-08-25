@@ -35,6 +35,7 @@ export {
   getArchive,
   getArchives,
   getAutomation,
+  getAutomationExecution,
   getAutomationExecutions,
   getAutomations,
   getChat,

@@ -611,12 +611,27 @@ export const AutomationModal: React.FC<{
   agents: Agent[];
   teams: Team[];
   embedded?: boolean;
-}> = ({ currentWorker, agents, teams, embedded = false }) => {
+  editorOnly?: boolean;
+  initialAutomationId?: string;
+  onSaved?: (automationId: string) => void;
+  onDeleted?: (automationId: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+}> = ({
+  currentWorker,
+  agents,
+  teams,
+  embedded = false,
+  editorOnly = false,
+  initialAutomationId = "",
+  onSaved,
+  onDeleted,
+  onDirtyChange,
+}) => {
   const { locale, t } = useI18n();
   const state = useAppState();
   const dispatch = useAppDispatch();
   const automations = state.automations;
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(initialAutomationId);
   const [executions, setExecutions] = useState<AutomationExecutionResponse[]>(
     [],
   );
@@ -624,7 +639,9 @@ export const AutomationModal: React.FC<{
   const [statusFilter, setStatusFilter] =
     useState<AutomationStatusFilter>("all");
   const [agentFilter, setAgentFilter] = useState("");
-  const [formMode, setFormMode] = useState<AutomationFormMode>("create");
+  const [formMode, setFormMode] = useState<AutomationFormMode>(
+    initialAutomationId ? "edit" : "create",
+  );
   const [editorMode, setEditorMode] =
     useState<AutomationEditorMode>("structured");
   const [activeSectionId, setActiveSectionId] =
@@ -653,6 +670,7 @@ export const AutomationModal: React.FC<{
   const [sourceSha256, setSourceSha256] = useState("");
   const [sourceLoadedId, setSourceLoadedId] = useState("");
   const [sourceDirty, setSourceDirty] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const didBootstrapAutomationsRef = useRef(false);
   const didBootstrapAgentsRef = useRef(false);
   const didAutoSelectInitialAutomationRef = useRef(false);
@@ -661,8 +679,8 @@ export const AutomationModal: React.FC<{
   const detailScrollRef = useRef<HTMLDivElement>(null);
   const sectionNavLinksRef = useRef<HTMLDivElement>(null);
 
-  const formSections = useMemo(
-    () => [
+  const formSections = useMemo(() => {
+    const sections = [
       {
         id: AUTOMATION_FORM_SECTION_IDS[0],
         label: t("automationConsole.section.basic"),
@@ -671,9 +689,9 @@ export const AutomationModal: React.FC<{
         id: AUTOMATION_FORM_SECTION_IDS[1],
         label: t("automationConsole.section.executions"),
       },
-    ],
-    [t],
-  );
+    ];
+    return editorOnly ? sections.slice(0, 1) : sections;
+  }, [editorOnly, t]);
 
   const handleSectionNavigate = useCallback(
     (
@@ -890,6 +908,7 @@ export const AutomationModal: React.FC<{
     setSourceSha256("");
     setSourceLoadedId("");
     setSourceDirty(false);
+    setDirty(false);
     setExecutions([]);
     setFormError("");
   }, [currentWorker]);
@@ -915,12 +934,17 @@ export const AutomationModal: React.FC<{
       try {
         const response = await getAutomation(normalizedId);
         setForm(formFromAutomation(response.data));
-        await loadExecutions(normalizedId);
+        setDirty(false);
+        if (!editorOnly) {
+          await loadExecutions(normalizedId);
+        } else {
+          setExecutions([]);
+        }
       } catch (error) {
         setError((error as Error).message);
       }
     },
-    [loadExecutions, startCreate],
+    [editorOnly, loadExecutions, startCreate],
   );
 
   const loadAutomations = useCallback(
@@ -934,7 +958,9 @@ export const AutomationModal: React.FC<{
         const nextId =
           preferredId && items.some((item) => item.id === preferredId)
             ? preferredId
-            : items[0]?.id || "";
+            : editorOnly
+              ? ""
+              : items[0]?.id || "";
         if (nextId) {
           await selectAutomation(nextId);
         } else {
@@ -946,12 +972,16 @@ export const AutomationModal: React.FC<{
         setLoading(false);
       }
     },
-    [dispatch, selectAutomation, startCreate],
+    [dispatch, editorOnly, selectAutomation, startCreate],
   );
 
   useEffect(() => {
     selectedAutomationIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty || sourceDirty);
+  }, [dirty, onDirtyChange, sourceDirty]);
 
   useEffect(() => {
     setActiveSectionId(AUTOMATION_FORM_SECTION_IDS[0]);
@@ -1029,8 +1059,8 @@ export const AutomationModal: React.FC<{
   useEffect(() => {
     if (!shouldStartAutomationConsoleBootstrap(didBootstrapAutomationsRef))
       return;
-    void loadAutomations(selectedId);
-  }, [loadAutomations, selectedId]);
+    void loadAutomations(initialAutomationId || selectedId);
+  }, [initialAutomationId, loadAutomations, selectedId]);
 
   useEffect(() => {
     if (!shouldLoadAutomationAgents(didBootstrapAgentsRef, agents)) return;
@@ -1039,6 +1069,7 @@ export const AutomationModal: React.FC<{
 
   useEffect(() => {
     if (
+      editorOnly ||
       didAutoSelectInitialAutomationRef.current ||
       selectedId ||
       formMode !== "create" ||
@@ -1048,10 +1079,11 @@ export const AutomationModal: React.FC<{
     }
     didAutoSelectInitialAutomationRef.current = true;
     void selectAutomation(automations[0].id);
-  }, [formMode, automations, selectAutomation, selectedId]);
+  }, [editorOnly, formMode, automations, selectAutomation, selectedId]);
 
   const updateForm = (patch: Partial<AutomationFormState>) => {
     setForm((current) => ({ ...current, ...patch }));
+    setDirty(true);
     setFormError("");
   };
 
@@ -1070,7 +1102,9 @@ export const AutomationModal: React.FC<{
           ? await createAutomation(buildCreateAutomationPayloadForSubmit(form))
           : await updateAutomation(buildUpdateAutomationPayloadForSubmit(form));
       await loadAutomations(response.data.id);
+      setDirty(false);
       message.success(t("automationConsole.message.saveSuccess"));
+      onSaved?.(response.data.id);
     } catch (error) {
       const errorMessage = (error as Error).message;
       setFormError(errorMessage);
@@ -1087,6 +1121,7 @@ export const AutomationModal: React.FC<{
     setSourceSha256(response.sha256);
     setSourceLoadedId(response.target.key || "");
     setSourceDirty(false);
+    setDirty(false);
   };
 
   const toggleEditorMode = async () => {
@@ -1180,6 +1215,7 @@ export const AutomationModal: React.FC<{
       ) {
         setForm(formFromAutomation(detailResponse.data));
       }
+      onSaved?.(id);
     } catch (sourceError) {
       setFormError(
         sourceError instanceof Error
@@ -1236,6 +1272,7 @@ export const AutomationModal: React.FC<{
           startCreate();
         }
       }
+      onDeleted?.(item.id);
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -1457,7 +1494,7 @@ export const AutomationModal: React.FC<{
 
   return (
     <div
-      className={`${embedded ? "command-modal-section" : "management-page-console"} ${AUTOMATION_CONSOLE_CLASS_NAME}`}
+      className={`${embedded ? "command-modal-section" : "management-page-console"} ${AUTOMATION_CONSOLE_CLASS_NAME} ${editorOnly ? "is-editor-only" : ""}`}
     >
       {error && (
         <div className={AUTOMATION_ERROR_CLASS_NAME}>
@@ -1472,7 +1509,9 @@ export const AutomationModal: React.FC<{
         </div>
       )}
 
-      <div className={AUTOMATION_BODY_CLASS_NAME}>
+      <div
+        className={`${AUTOMATION_BODY_CLASS_NAME} ${editorOnly ? "is-editor-only" : ""}`}
+      >
         <div className={AUTOMATION_LIST_CLASS_NAME}>
           <div className={AUTOMATION_TOOLBAR_CLASS_NAME}>
             <SearchFilterBar
@@ -1603,7 +1642,7 @@ export const AutomationModal: React.FC<{
                           disabled={Boolean(listAction && !itemBusy)}
                         >
                           <div
-                            className={AUTOMATION_LIST_ITEM_MENU_CLASS_NAME}
+                            className={`${AUTOMATION_LIST_ITEM_MENU_CLASS_NAME} ${AUTOMATION_LIST_ITEM_MENU_TRIGGER_CLASS_NAME}`}
                             onClick={(event) => event.stopPropagation()}
                           >
                             <MaterialIcon name="more_horiz" />
@@ -1786,6 +1825,7 @@ export const AutomationModal: React.FC<{
                   onChange={(event) => {
                     setSourceDraft(event.target.value);
                     setSourceDirty(true);
+                    setDirty(true);
                     setFormError("");
                   }}
                 />

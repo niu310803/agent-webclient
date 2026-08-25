@@ -1,7 +1,7 @@
-import { AutomationModal } from "@/app/modals/AutomationModal";
 import { useMemo } from "react";
 import { useAppState } from "@/app/state/AppContext";
 import { resolveCurrentWorkerSummary } from "@/features/workers/lib/currentWorker";
+import { AutomationHistoryConsole } from "./AutomationHistoryConsole";
 
 export const AutomationsPage = () => {
   const state = useAppState();
@@ -11,7 +11,7 @@ export const AutomationsPage = () => {
   );
   return (
     <main className="automations-page automations-console-page">
-      <AutomationModal
+      <AutomationHistoryConsole
         currentWorker={currentWorker}
         agents={state.agents}
         teams={state.teams}
