@@ -151,7 +151,7 @@ export const CommandDrawer: React.FC<CommandDrawerProps> = ({
     >
       <div
         ref={cardRef}
-        className={`command-modal-card ${isConsoleModal ? "is-automation-console" : ""}`}
+        className={`tw:h-full tw:overflow-auto ${isConsoleModal ? "is-automation-console" : ""}`}
         onKeyDown={(event) => {
           if (modal.type === "switch") {
             if (event.key === "ArrowRight") {

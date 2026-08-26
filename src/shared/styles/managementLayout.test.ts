@@ -39,12 +39,12 @@ describe("management layout contracts", () => {
     expect(workersCss).toMatch(/\.automations-console-page,\s*\.registries-page,\s*\.mcp-servers-page\s*\{[\s\S]*?height:\s*100vh;/);
   });
 
-  it("keeps modal and drawer sections capped to the visible viewport", () => {
+  it("lets modal and drawer sections fill the fixed command card height", () => {
     const modalCss = readStyle("modal.css");
     const modalRule = readRule(modalCss, ".command-modal-section");
 
-    expect(modalRule).toMatch(/max-height:\s*70vh;/);
-    expect(modalRule).not.toMatch(/height:\s*100%;/);
+    expect(modalRule).toMatch(/height:\s*100%;/);
+    expect(modalRule).not.toMatch(/max-height:\s*70vh;/);
   });
 
   it("keeps management dialogs stable while source editors fill the available height", () => {
