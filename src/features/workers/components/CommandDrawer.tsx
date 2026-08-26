@@ -8,7 +8,7 @@ import {
   resolveCurrentWorkerSummary,
 } from "@/features/workers/lib/currentWorker";
 import { HistoryModal } from "@/features/chats/components/HistoryModal";
-import { AutomationModal } from "@/app/modals/AutomationModal";
+import { AutomationHistoryConsole } from "@/app/pages/automations/AutomationHistoryConsole";
 import {
   SWITCH_SCOPES,
   SwitchModal,
@@ -151,7 +151,11 @@ export const CommandDrawer: React.FC<CommandDrawerProps> = ({
     >
       <div
         ref={cardRef}
-        className={`tw:h-full tw:overflow-auto ${isConsoleModal ? "is-automation-console" : ""}`}
+        className={
+          isConsoleModal
+            ? "command-modal-card is-automation-console"
+            : "tw:h-full tw:overflow-auto"
+        }
         onKeyDown={(event) => {
           if (modal.type === "switch") {
             if (event.key === "ArrowRight") {
@@ -248,13 +252,14 @@ export const CommandDrawer: React.FC<CommandDrawerProps> = ({
         )}
 
         {modal.type === "automation" && (
-          <AutomationModal
+          <AutomationHistoryConsole
             currentWorker={currentWorker}
             agents={state.agents}
             teams={state.teams}
             embedded
             onClose={() => closeDrawer()}
             titleBarVariant="drawer"
+            onNavigateAway={() => closeDrawer(false)}
           />
         )}
 

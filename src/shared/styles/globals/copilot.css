@@ -290,3 +290,15 @@ html[data-theme="dark"] .copilot-side-panel {
 .copilot-drawer .ant-drawer-body {
     padding: 10px;
 }
+
+.copilot-drawer.is-automation-console .ant-drawer-body {
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.copilot-drawer.is-automation-console .command-modal-card.is-automation-console {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+}

@@ -48,6 +48,7 @@ import { AgentIcon } from "@/shared/icons/agent";
 import { UiButton } from "@/shared/ui/UiButton";
 import { UiTag } from "@/shared/ui/UiTag";
 import { MarkdownContent } from "@/shared/ui/MarkdownContent";
+import { ModalTitleBar } from "@/shared/ui/ModalTitleBar";
 import { useI18n } from "@/shared/i18n";
 import { copyText } from "@/shared/utils/copy";
 import {
@@ -325,15 +326,25 @@ function AutomationResultDrawer({
   );
 }
 
+export interface AutomationHistoryConsoleProps {
+  currentWorker: CurrentWorkerSummary | null;
+  agents: Agent[];
+  teams: Team[];
+  embedded?: boolean;
+  onClose?: () => void;
+  titleBarVariant?: "default" | "drawer";
+  onNavigateAway?: () => void;
+}
+
 export function AutomationHistoryConsole({
   currentWorker,
   agents,
   teams,
-}: {
-  currentWorker: CurrentWorkerSummary | null;
-  agents: Agent[];
-  teams: Team[];
-}) {
+  embedded = false,
+  onClose,
+  titleBarVariant = "default",
+  onNavigateAway,
+}: AutomationHistoryConsoleProps) {
   const { locale, t } = useI18n();
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -673,6 +684,7 @@ export function AutomationHistoryConsole({
           readSurfacePresentationContext(location.search),
         ),
       );
+      onNavigateAway?.();
       return;
     }
     navigate("/", {
@@ -683,6 +695,7 @@ export function AutomationHistoryConsole({
         },
       },
     });
+    onNavigateAway?.();
   };
 
   const moreSettingsMenu: MenuProps = {
@@ -756,7 +769,15 @@ export function AutomationHistoryConsole({
   };
 
   return (
-    <div className={styles.console}>
+    <>
+      {embedded ? (
+        <ModalTitleBar
+          title={t("commandModal.automation.title")}
+          variant={titleBarVariant}
+          onClose={() => onClose?.()}
+        />
+      ) : null}
+      <div className={styles.console}>
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHead}>
           <div className={styles.sidebarSearchRow}>
@@ -847,55 +868,68 @@ export function AutomationHistoryConsole({
                 </div>
               </div>
               <div className={styles.headerActions}>
-                <UiButton
-                  size="sm"
-                  variant="secondary"
-                  className="ui-icon-hover-24"
-                  onClick={() => {
-                    setEditorAutomationId(selected.id);
-                    setEditorOpen(true);
-                  }}
-                >
-                  <MaterialIcon name="edit" className="ui-icon-hover-24-target" />
-                  {t("automationHistory.action.edit")}
-                </UiButton>
-                <UiButton
-                  size="sm"
-                  variant="ghost"
-                  className="ui-icon-hover-24"
-                  disabled={actionBusy}
-                  onClick={() => void toggleSelected()}
-                >
-                  <MaterialIcon
-                    name={selected.enabled ? "pause_circle" : "play_circle"}
-                    className="ui-icon-hover-24-target"
-                  />
-                  {selected.enabled
+                <Tooltip title={t("automationHistory.action.edit")} arrow={false}>
+                  <UiButton
+                    size="sm"
+                    variant="secondary"
+                    className="ui-icon-hover-24"
+                    iconOnly
+                    aria-label={t("automationHistory.action.edit")}
+                    onClick={() => {
+                      setEditorAutomationId(selected.id);
+                      setEditorOpen(true);
+                    }}
+                  >
+                    <MaterialIcon name="edit" />
+                  </UiButton>
+                </Tooltip>
+                <Tooltip
+                  title={selected.enabled
                     ? t("automationConsole.action.disable")
                     : t("automationConsole.action.enable")}
-                </UiButton>
-                <UiButton
-                  size="sm"
-                  variant="ghost"
-                  className={`${styles.deleteAction} ui-icon-hover-24`}
-                  disabled={actionBusy}
-                  onClick={deleteSelected}
+                  arrow={false}
                 >
-                  <MaterialIcon name="delete" className="ui-icon-hover-24-target" />
-                  {t("automationConsole.action.delete")}
-                </UiButton>
-                <Dropdown menu={moreSettingsMenu} trigger={["click"]} placement="bottomRight">
                   <UiButton
                     size="sm"
                     variant="ghost"
                     className="ui-icon-hover-24"
-                    loading={actionBusy}
-                    aria-label={t("automationHistory.action.moreSettings")}
+                    iconOnly
+                    aria-label={selected.enabled
+                      ? t("automationConsole.action.disable")
+                      : t("automationConsole.action.enable")}
+                    disabled={actionBusy}
+                    onClick={() => void toggleSelected()}
                   >
-                    <MaterialIcon name="more_horiz" className="ui-icon-hover-24-target" />
-                    {t("automationHistory.action.moreSettings")}
+                    <MaterialIcon name={selected.enabled ? "pause_circle" : "play_circle"} />
                   </UiButton>
-                </Dropdown>
+                </Tooltip>
+                <Tooltip title={t("automationConsole.action.delete")} arrow={false}>
+                  <UiButton
+                    size="sm"
+                    variant="ghost"
+                    className={`${styles.deleteAction} ui-icon-hover-24`}
+                    iconOnly
+                    aria-label={t("automationConsole.action.delete")}
+                    disabled={actionBusy}
+                    onClick={deleteSelected}
+                  >
+                    <MaterialIcon name="delete" />
+                  </UiButton>
+                </Tooltip>
+                <Tooltip title={t("automationHistory.action.moreSettings")} arrow={false}>
+                  <Dropdown menu={moreSettingsMenu} trigger={["click"]} placement="bottomRight">
+                    <UiButton
+                      size="sm"
+                      variant="ghost"
+                      className="ui-icon-hover-24"
+                      iconOnly
+                      loading={actionBusy}
+                      aria-label={t("automationHistory.action.moreSettings")}
+                    >
+                      <MaterialIcon name="more_horiz" />
+                    </UiButton>
+                  </Dropdown>
+                </Tooltip>
               </div>
             </header>
 
@@ -1101,6 +1135,7 @@ export function AutomationHistoryConsole({
           if (resultExecution) void loadExecutionDetail(resultExecution);
         }}
       />
-    </div>
+      </div>
+    </>
   );
 }

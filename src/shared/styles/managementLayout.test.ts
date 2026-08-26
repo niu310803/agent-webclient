@@ -49,6 +49,7 @@ describe("management layout contracts", () => {
 
   it("keeps management dialogs stable while source editors fill the available height", () => {
     const modalCss = readStyle("modal.css");
+    const copilotCss = readStyle("copilot.css");
     const bodyRule = readRule(
       modalCss,
       ".command-modal.is-automation-console .ant-modal-body",
@@ -73,6 +74,14 @@ describe("management layout contracts", () => {
       modalCss,
       ".automation-source-editor.ant-input",
     );
+    const drawerBodyRule = readRule(
+      copilotCss,
+      ".copilot-drawer.is-automation-console .ant-drawer-body",
+    );
+    const drawerCardRule = readRule(
+      copilotCss,
+      ".copilot-drawer.is-automation-console .command-modal-card.is-automation-console",
+    );
 
     expect(bodyRule).toMatch(/height:\s*min\(76vh,\s*720px\);/);
     expect(bodyRule).toMatch(/overflow:\s*hidden;/);
@@ -87,6 +96,12 @@ describe("management layout contracts", () => {
     expect(sourceEditorRule).toMatch(/flex:\s*1 1 auto;/);
     expect(sourceEditorRule).toMatch(/min-height:\s*0;/);
     expect(sourceEditorRule).toMatch(/resize:\s*none;/);
+    expect(drawerBodyRule).toMatch(/display:\s*flex;/);
+    expect(drawerBodyRule).toMatch(/min-height:\s*0;/);
+    expect(drawerBodyRule).toMatch(/overflow:\s*hidden;/);
+    expect(drawerCardRule).toMatch(/height:\s*100%;/);
+    expect(drawerCardRule).toMatch(/min-height:\s*0;/);
+    expect(drawerCardRule).toMatch(/max-height:\s*none;/);
   });
 
   it("keeps the worker history dialog height stable and scrolls its list", () => {
