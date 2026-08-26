@@ -133,6 +133,7 @@ import {
   initialAgentInteractionMode,
   firstAdminAgentDiagnosticMessage,
   formFromDetail,
+  getActiveAgentSectionId,
   getModelReasoningEfforts,
   hasEditableAdminDefinition,
   importAgentArchiveWithOverwrite,
@@ -142,6 +143,7 @@ import {
   readAdminAgentDiagnostics,
   resolveAdminAgentSourcePath,
   saveAgentOrderRequest,
+  shouldReloadAgentDetail,
   shouldShowAgentSectionNav,
   shouldStartAgentConsoleBootstrap,
   toolOptionLabel,
@@ -477,6 +479,11 @@ describe("AgentConsole admin diagnostics", () => {
 
 
 describe("AgentConsole i18n rendering", () => {
+  it("does not reload the selected Agent detail when a list refresh keeps the same selection", () => {
+    expect(shouldReloadAgentDetail("bootstrap", "bootstrap")).toBe(false);
+    expect(shouldReloadAgentDetail("bootstrap", "desktop")).toBe(true);
+  });
+
   it("opens existing agents in read-only mode while new agents remain editable", () => {
     expect(initialAgentInteractionMode("edit")).toBe("view");
     expect(initialAgentInteractionMode("create")).toBe("edit");
@@ -594,6 +601,40 @@ describe("AgentConsole i18n rendering", () => {
     expect(html).not.toContain(' hidden=""');
     expect(html).not.toContain("agent-config-box");
     expect(html).not.toContain("<fieldset");
+  });
+
+  it("selects the active anchor from visual positions instead of source order", () => {
+    const positions = [
+      { id: "agent-section-basic" as const, top: -480 },
+      { id: "agent-section-model" as const, top: -320 },
+      { id: "agent-section-prompts" as const, top: -80 },
+      {
+        id: "agent-section-context-capabilities" as const,
+        top: -180,
+      },
+      { id: "agent-section-advanced" as const, top: 320 },
+    ];
+
+    expect(getActiveAgentSectionId(positions, 56)).toBe(
+      "agent-section-prompts",
+    );
+  });
+
+  it("keeps the last visual section active when the scroll container reaches its end", () => {
+    const positions = [
+      { id: "agent-section-basic" as const, top: -960 },
+      { id: "agent-section-model" as const, top: -720 },
+      { id: "agent-section-prompts" as const, top: -440 },
+      {
+        id: "agent-section-context-capabilities" as const,
+        top: -600,
+      },
+      { id: "agent-section-advanced" as const, top: 180 },
+    ];
+
+    expect(
+      getActiveAgentSectionId(positions, 56, { atScrollEnd: true }),
+    ).toBe("agent-section-advanced");
   });
 
   it("shows anchor navigation only for editable structured forms", () => {
