@@ -97,6 +97,34 @@ export function initialAgentInteractionMode(
 ): AgentInteractionMode {
   return formMode === "edit" ? "view" : "edit";
 }
+
+export function shouldReloadAgentDetail(
+  loadedAgentKey: string,
+  selectedAgentKey: string,
+): boolean {
+  const nextKey = selectedAgentKey.trim();
+  return Boolean(nextKey) && loadedAgentKey !== nextKey;
+}
+
+export function getActiveAgentSectionId<T extends string>(
+  sections: ReadonlyArray<{ id: T; top: number }>,
+  anchorTop: number,
+  options: { atScrollEnd?: boolean } = {},
+): T | null {
+  if (!sections.length) return null;
+  const visualSections = [...sections].sort(
+    (left, right) => left.top - right.top,
+  );
+  if (options.atScrollEnd) {
+    return visualSections[visualSections.length - 1].id;
+  }
+  return (
+    visualSections
+      .slice()
+      .reverse()
+      .find((section) => section.top <= anchorTop)?.id ?? visualSections[0].id
+  );
+}
 type EditableAgentDetail = AgentDetailResponse | AdminAgentDetailResponse;
 
 type ChoicePresentation = {
@@ -1626,7 +1654,9 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
   const optionsLoadSeqRef = useRef(0);
   const sourceLoadSeqRef = useRef(0);
   const selectedAgentKeyRef = useRef(selectedAgentKey);
+  const loadedDetailKeyRef = useRef("");
   const detailScrollRef = useRef<HTMLDivElement>(null);
+  const sectionNavRef = useRef<HTMLElement>(null);
   const privateSkillFileInputRef = useRef<HTMLInputElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -1918,27 +1948,53 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
     const sections = AGENT_FORM_SECTION_IDS.map((id) =>
       root.querySelector<HTMLElement>(`#${id}`),
     ).filter((section): section is HTMLElement => Boolean(section));
-    if (!sections.length || typeof IntersectionObserver === "undefined")
-      return;
+    if (!sections.length) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort(
-            (left, right) =>
-              left.boundingClientRect.top - right.boundingClientRect.top,
-          );
-        if (visible[0]) {
-          setActiveAgentSectionId(
-            visible[0].target.id as AgentFormSectionId,
-          );
-        }
-      },
-      { root, rootMargin: "-56px 0px -62% 0px", threshold: [0, 0.1, 0.5] },
-    );
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
+    let frameId: number | null = null;
+    const updateActiveSection = () => {
+      frameId = null;
+      const rootTop = root.getBoundingClientRect().top;
+      const navHeight =
+        sectionNavRef.current?.getBoundingClientRect().height ?? 0;
+      const nextSectionId = getActiveAgentSectionId(
+        sections.map((section) => ({
+          id: section.id as AgentFormSectionId,
+          top: section.getBoundingClientRect().top,
+        })),
+        rootTop + navHeight + 8,
+        {
+          atScrollEnd:
+            root.scrollTop + root.clientHeight >= root.scrollHeight - 1,
+        },
+      );
+      if (!nextSectionId) return;
+      setActiveAgentSectionId((current) =>
+        current === nextSectionId ? current : nextSectionId,
+      );
+    };
+    const scheduleActiveSectionUpdate = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(updateActiveSection);
+    };
+
+    root.addEventListener("scroll", scheduleActiveSectionUpdate, {
+      passive: true,
+    });
+    window.addEventListener("resize", scheduleActiveSectionUpdate);
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleActiveSectionUpdate);
+    resizeObserver?.observe(root);
+    sections.forEach((section) => resizeObserver?.observe(section));
+    updateActiveSection();
+
+    return () => {
+      root.removeEventListener("scroll", scheduleActiveSectionUpdate);
+      window.removeEventListener("resize", scheduleActiveSectionUpdate);
+      resizeObserver?.disconnect();
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
   }, [canEditStructuredAgent, editorMode, form.key]);
 
   useEffect(() => {
@@ -1957,6 +2013,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
 
   const resetToCreate = useCallback(() => {
     sourceLoadSeqRef.current += 1;
+    loadedDetailKeyRef.current = "";
     setFormMode("create");
     setEditorMode("structured");
     setInteractionMode(initialAgentInteractionMode("create"));
@@ -2224,18 +2281,23 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
   }, [selectedAgentKey]);
 
   useEffect(() => {
-    if (effectiveSelectedKey) {
-      void loadDetail(effectiveSelectedKey);
-    } else if (localAgents.length === 0 && !loadingList) {
-      resetToCreate();
+    if (
+      !shouldReloadAgentDetail(
+        loadedDetailKeyRef.current,
+        effectiveSelectedKey,
+      )
+    ) {
+      return;
     }
-  }, [
-    effectiveSelectedKey,
-    loadDetail,
-    loadingList,
-    resetToCreate,
-    localAgents.length,
-  ]);
+    loadedDetailKeyRef.current = effectiveSelectedKey;
+    void loadDetail(effectiveSelectedKey);
+  }, [effectiveSelectedKey, loadDetail]);
+
+  useEffect(() => {
+    if (effectiveSelectedKey || localAgents.length !== 0 || loadingList) return;
+    loadedDetailKeyRef.current = "";
+    resetToCreate();
+  }, [effectiveSelectedKey, loadingList, resetToCreate, localAgents.length]);
 
   const updateForm = (patch: Partial<AgentFormState>) => {
     if (isReadOnly) return;
@@ -2846,6 +2908,7 @@ export const AgentConsole: React.FC<AgentConsoleProps> = ({
         >
           <Spin spinning={loadingDetail || loadingSource}>
             <nav
+              ref={sectionNavRef}
               className={AGENT_SECTION_NAV_CLASS_NAME}
               aria-label={t("agentConsole.sectionNav.ariaLabel")}
             >
