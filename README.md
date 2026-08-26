@@ -95,18 +95,15 @@ Chat 图片与 Artifact 使用后端返回的不含 `chatId` 的 ChatScope `<rel
 cp .env.example .env
 ```
 
-至少确认：
+本地开发至少需要设置：
 
 ```bash
 BASE_URL=http://localhost:11949
-BACKEND_MODE=platform
-DESKTOP_APP=false
 ```
 
 - `PORT`：可选。本地开发端口，未设置时默认使用 `11948`；也可由 CLI args、环境变量或 Desktop 宿主注入。
 - `BASE_URL`：AGW / AGENT 后端地址，前端会把 `/api/*` 和 `/ws` 代理到这里。
 - `BACKEND_MODE`：默认 `platform`，保留 Bearer Token；设置为 `gateway` 时使用同源 Session Cookie，并在最终 401 后进入 Gateway 配置的登录流程。
-- `DESKTOP_APP`：Standalone 必须显式为 `false`。只有提供 canonical trusted realtime/workpanel/terminal bridge 的兼容 Desktop 才能注入 `true`；bridge 未到位时页面会硬阻断且不会回落直连。
 
 ### 2. 安装依赖并启动
 
@@ -166,10 +163,8 @@ Program Bundle 包含 `manifest.json`、`.env.example`、`frontend/dist/` 和 De
 | `PORT` | 否 | 本地开发端口；Program Bundle 运行时由 Desktop 宿主注入 |
 | `BASE_URL` | 是 | AGW / AGENT 后端 HTTP API 与主 `/ws` 基地址 |
 | `BACKEND_MODE` | 否 | `platform`（默认）保留 Token 认证；`gateway` 使用 Session Cookie、CSRF 与登录回跳 |
-| `DESKTOP_APP` | 否 | Standalone 固定为 `false`；兼容 Desktop host 注入 `true`，bridge 缺失或不兼容时硬阻断 |
 | `DEBUG_PANEL_ENABLED` | 否 | 是否显示调试面板入口 |
 | `SETTINGS_MENU_ENABLED` | 否 | 是否显示设置入口 |
-| `MEMORY_ENABLED` | 否 | 是否显示 memory 相关入口 |
 | `CONVERSATION_EXPORT_ASSET_ORIGIN` | HTML 导出时是 | Tunnel 资源 origin；生产必须为 HTTPS，本地开发可使用 loopback HTTP，例如 `http://127.0.0.1:11961` |
 
 本地开发和 Program Bundle 构建复用同一组变量名。`.env` 是本地真实配置，不提交版本库。
