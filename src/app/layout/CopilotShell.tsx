@@ -5,7 +5,11 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { useAppDispatch, useAppState } from "@/app/state/AppContext";
+import {
+  useAppDispatch,
+  useAppState,
+  useOptionalAppContext,
+} from "@/app/state/AppContext";
 import type { Agent } from "@/app/state/types";
 import {
   resolveStatusPillClassName,
@@ -25,6 +29,7 @@ import {
 } from "@/features/workers/components/CommandOverlayProvider";
 import { ConversationStage } from "@/features/timeline/components/ConversationStage";
 import { resolveCurrentWorkerSummary } from "@/features/workers/lib/currentWorker";
+import { resolveMainChatRuntime } from "@/features/runs/lib/runRuntimeState";
 import { isSettingsMenuEnabled } from "@/shared/config/featureFlags";
 import { useI18n } from "@/shared/i18n";
 import { MaterialIcon } from "@/shared/ui/MaterialIcon";
@@ -107,8 +112,20 @@ const CopilotTopBar: React.FC = () => {
   const { t } = useI18n();
   const { openOverlay } = useSettingsOverlayActions();
   const { openCommandOverlay } = useCommandOverlayActions();
+  const appContext = useOptionalAppContext();
   const currentWorker = resolveCurrentWorkerSummary(state);
-  const { statusClass, statusText, statusDetail } = resolveTopNavStatus(state);
+  const mainChatRuntime = appContext
+    ? resolveMainChatRuntime(
+        appContext.stateRef,
+        appContext.activeQuerySessionRequestIdRef,
+        appContext.querySessionsRef,
+      )
+    : null;
+  const isMainChatRunning = Boolean(mainChatRuntime?.running);
+  const { statusClass, statusText, statusDetail } = resolveTopNavStatus(
+    state,
+    isMainChatRunning,
+  );
   const settingsMenuEnabled = isSettingsMenuEnabled();
   const statusLabel = t(statusText);
   const statusTitle = statusDetail

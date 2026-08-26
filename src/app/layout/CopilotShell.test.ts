@@ -20,6 +20,7 @@ jest.mock("react-router-dom", () => ({
 jest.mock("@/app/state/AppContext", () => ({
   useAppState: jest.fn(),
   useAppDispatch: jest.fn(),
+  useOptionalAppContext: jest.fn(() => null),
 }));
 
 jest.mock("@/app/layout/hooks/useAppRuntimes", () => ({
