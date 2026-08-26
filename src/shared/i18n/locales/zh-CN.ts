@@ -1360,6 +1360,8 @@ export const zhCNMessages = {
   "timeline.empty.withWorker": "与 {name} 对话",
   "timeline.source.collapse": "收起来源片段",
   "timeline.source.expand": "展开来源片段",
+  "timeline.userBubble.collapse": "收起",
+  "timeline.userBubble.expand": "展开",
   "timeline.source.locator.line": "第 {start} 行",
   "timeline.source.locator.lineRange": "第 {start}-{end} 行",
   "timeline.source.locator.page": "第 {start} 页",

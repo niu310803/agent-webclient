@@ -1361,6 +1361,8 @@ export const enUSMessages = {
   "timeline.empty.withWorker": "Chat with {name}",
   "timeline.source.collapse": "Hide source chunks",
   "timeline.source.expand": "Show source chunks",
+  "timeline.userBubble.collapse": "Show less",
+  "timeline.userBubble.expand": "Show more",
   "timeline.source.locator.line": "Line {start}",
   "timeline.source.locator.lineRange": "Lines {start}-{end}",
   "timeline.source.locator.page": "Page {start}",
