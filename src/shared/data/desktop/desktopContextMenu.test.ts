@@ -1,12 +1,17 @@
 import {
   initializeDesktopContextMenuBridge,
   registerDesktopCurrentResourceDownload,
+  registerDesktopCurrentPreviewReview,
   registerDesktopContextMenuTarget,
   resolveDesktopContextMenuTargetAt,
   SERVICE_WEBVIEW_BRIDGE_ACTION_CHANNEL,
   WEBVIEW_CONTEXT_MENU_SEMANTIC_RESPONSE_CHANNEL,
 } from "./desktopContextMenu";
 import {
+  AGENT_WEBCLIENT_COMPOSER_DRAFT_ACTION,
+  AGENT_WEBCLIENT_COMPOSER_DRAFT_VERSION,
+  AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_ACTION,
+  AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_VERSION,
   AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_ACTION,
   AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_VERSION,
 } from "@/features/transport/contracts/generated/agentWebclientBridge";
@@ -207,5 +212,64 @@ describe("Desktop context menu semantic bridge", () => {
     });
     await Promise.resolve();
     expect(download).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes only versioned preview review actions and forwards bounded Composer drafts", () => {
+    let hostListener: ((event: unknown, payload: unknown) => void) | undefined;
+    const dispatchEvent = jest.fn();
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        electronAPI: {
+          onFromMain: (_channel: string, listener: typeof hostListener) => {
+            hostListener = listener;
+          },
+        },
+        location: { href: "http://127.0.0.1/ui/" },
+        postMessage: jest.fn(),
+        dispatchEvent,
+      },
+    });
+    const previousCustomEvent = globalThis.CustomEvent;
+    Object.defineProperty(globalThis, "CustomEvent", {
+      configurable: true,
+      value: class FakeCustomEvent {
+        type: string;
+        detail: unknown;
+        constructor(type: string, init: { detail: unknown }) {
+          this.type = type;
+          this.detail = init.detail;
+        }
+      },
+    });
+    const review = jest.fn();
+    const unregister = registerDesktopCurrentPreviewReview(review);
+    initializeDesktopContextMenuBridge();
+    const reviewAction = {
+      action: AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_ACTION,
+      version: AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_VERSION,
+      requestId: "review-1",
+      operation: "capabilities",
+    };
+    hostListener?.({}, reviewAction);
+    hostListener?.({}, { ...reviewAction, version: 999 });
+    expect(review).toHaveBeenCalledTimes(1);
+    expect(review).toHaveBeenCalledWith(reviewAction);
+
+    const draftAction = {
+      action: AGENT_WEBCLIENT_COMPOSER_DRAFT_ACTION,
+      version: AGENT_WEBCLIENT_COMPOSER_DRAFT_VERSION,
+      requestId: "draft-1",
+      ownerChatId: "chat-1",
+      text: "review draft",
+    };
+    hostListener?.({}, draftAction);
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
+    expect(dispatchEvent.mock.calls[0][0]).toMatchObject({ detail: draftAction });
+    unregister();
+    Object.defineProperty(globalThis, "CustomEvent", {
+      configurable: true,
+      value: previousCustomEvent,
+    });
   });
 });

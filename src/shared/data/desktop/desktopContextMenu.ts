@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
+  AGENT_WEBCLIENT_COMPOSER_DRAFT_ACTION,
+  AGENT_WEBCLIENT_COMPOSER_DRAFT_VERSION,
+  AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_ACTION,
+  AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_VERSION,
   AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_ACTION,
   AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_VERSION,
+  type AgentWebclientWorkPanelPreviewReviewAction,
 } from "@/features/transport/contracts/generated/agentWebclientBridge";
 
 export const SERVICE_WEBVIEW_BRIDGE_ACTION_CHANNEL =
@@ -49,6 +54,8 @@ type DesktopContextMenuWindow = Window & typeof globalThis & {
 
 const targets = new WeakMap<Element, DesktopContextMenuTargetDescriptor>();
 let currentResourceDownloadHandler: (() => void | Promise<void>) | null = null;
+let currentPreviewReviewHandler: ((action: AgentWebclientWorkPanelPreviewReviewAction) => void) | null = null;
+export const DESKTOP_COMPOSER_REVIEW_DRAFT_EVENT = "agent:insert-workpanel-review-draft";
 
 const CAPABILITY_BY_COMMAND: Record<DesktopContextMenuCommand, string> = {
   "copy-content": "content.copy",
@@ -130,6 +137,33 @@ export function registerDesktopCurrentResourceDownload(
   return () => {
     if (currentResourceDownloadHandler === handler) {
       currentResourceDownloadHandler = null;
+    }
+  };
+}
+
+export function useDesktopCurrentPreviewReview(
+  handler: ((action: AgentWebclientWorkPanelPreviewReviewAction) => void) | null,
+) {
+  const handlerRef = useRef(handler);
+  const enabled = handler !== null;
+  handlerRef.current = handler;
+
+  useEffect(() => {
+    if (!enabled) return;
+    const registeredHandler = (action: AgentWebclientWorkPanelPreviewReviewAction) => {
+      handlerRef.current?.(action);
+    };
+    return registerDesktopCurrentPreviewReview(registeredHandler);
+  }, [enabled]);
+}
+
+export function registerDesktopCurrentPreviewReview(
+  handler: (action: AgentWebclientWorkPanelPreviewReviewAction) => void,
+) {
+  currentPreviewReviewHandler = handler;
+  return () => {
+    if (currentPreviewReviewHandler === handler) {
+      currentPreviewReviewHandler = null;
     }
   };
 }
@@ -231,6 +265,25 @@ export function initializeDesktopContextMenuBridge() {
         currentResourceDownloadHandler
       ) {
         void Promise.resolve(currentResourceDownloadHandler()).catch(() => undefined);
+      }
+      if (
+        value.action === AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_ACTION &&
+        value.version === AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_VERSION &&
+        currentPreviewReviewHandler
+      ) {
+        currentPreviewReviewHandler(value as AgentWebclientWorkPanelPreviewReviewAction);
+      }
+      if (
+        value.action === AGENT_WEBCLIENT_COMPOSER_DRAFT_ACTION &&
+        value.version === AGENT_WEBCLIENT_COMPOSER_DRAFT_VERSION &&
+        typeof value.requestId === "string" &&
+        typeof value.ownerChatId === "string" &&
+        typeof value.text === "string" &&
+        typeof window.dispatchEvent === "function"
+      ) {
+        window.dispatchEvent(new CustomEvent(DESKTOP_COMPOSER_REVIEW_DRAFT_EVENT, {
+          detail: value,
+        }));
       }
     },
   );

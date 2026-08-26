@@ -40,6 +40,7 @@ export const ResourceViewerPage: React.FC = () => {
         <ContentViewerPanel
           target={target}
           enableDesktopCurrentResourceDownload
+          enableDesktopPreviewReview
           surfaceContext={{ chatId, teamChat: false }}
         />
       ) : null}

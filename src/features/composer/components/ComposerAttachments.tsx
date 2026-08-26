@@ -81,7 +81,7 @@ export const ComposerAttachments: React.FC<ComposerAttachmentsProps> = ({
                   previewUrl: attachment.previewUrl,
                 }}
                 variant="composer"
-                status={attachment.status}
+                status={attachment.status === "staged" ? "ready" : attachment.status}
                 displayMode={useUnifiedComposerAttachmentRow ? "file" : "auto"}
                 thumbnailMode={
                   useUnifiedComposerAttachmentRow ? "inline" : "auto"

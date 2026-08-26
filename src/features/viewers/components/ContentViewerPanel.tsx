@@ -22,6 +22,7 @@ import {
   useDesktopContextMenuTarget,
   useDesktopCurrentResourceDownload,
 } from "@/shared/data/desktop/desktopContextMenu";
+import { useDesktopImagePreviewReview } from "@/features/viewers/hooks/useDesktopImagePreviewReview";
 
 const CONTENT_VIEWER_PANEL_CLASS_NAME =
   "content-viewer-panel tw:flex tw:h-full tw:flex-col";
@@ -69,6 +70,7 @@ interface ContentViewerPanelProps {
   showLineNumbers?: boolean;
   fullscreenRequest?: number;
   enableDesktopCurrentResourceDownload?: boolean;
+  enableDesktopPreviewReview?: boolean;
   surfaceContext?: {
     chatId: string;
     teamChat?: boolean;
@@ -145,6 +147,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   showLineNumbers = false,
   fullscreenRequest,
   enableDesktopCurrentResourceDownload = false,
+  enableDesktopPreviewReview = false,
   surfaceContext,
 }) => {
   const appState = useAppState();
@@ -163,6 +166,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   const [mediaError, setMediaError] = React.useState("");
   const textContainerRef = React.useRef<HTMLPreElement | null>(null);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
+  const imageReviewHostRef = React.useRef<HTMLDivElement | null>(null);
   const contextTargetId = React.useId();
   const fileRequest = React.useMemo(
     () => target.type === "file"
@@ -189,6 +193,12 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   const authenticatedResource = useAuthenticatedResourceUrl(mediaSource, chatId, { teamChat });
   const mediaUrl = authenticatedResource.url;
   const viewerName = workspaceFileResponse?.name || target.name;
+  useDesktopImagePreviewReview({
+    enabled: enableDesktopPreviewReview && contentKind === "image" && Boolean(mediaUrl),
+    fileName: viewerName,
+    sourceKey: JSON.stringify(target),
+    imageHostRef: imageReviewHostRef,
+  });
   const fileHtml = resolveFileViewerHtml(
     workspaceFileResponse,
   );
@@ -352,12 +362,14 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
     <div ref={setPanelElement} className={CONTENT_VIEWER_PANEL_CLASS_NAME}>
       {viewable ? <div className={CONTENT_VIEWER_BODY_CLASS_NAME}>
         {contentKind === "image" && mediaUrl ? (
-          <Image
-            className="content-viewer-image"
-            src={mediaUrl}
-            alt={viewerName}
-            onError={() => setMediaError(t("contentViewer.error.image"))}
-          />
+          <div ref={imageReviewHostRef} className="content-viewer-image-review-host tw:inline-block tw:max-w-full tw:self-start">
+            <Image
+              className="content-viewer-image"
+              src={mediaUrl}
+              alt={viewerName}
+              onError={() => setMediaError(t("contentViewer.error.image"))}
+            />
+          </div>
         ) : null}
 
         {contentKind === "pdf" && mediaUrl ? (

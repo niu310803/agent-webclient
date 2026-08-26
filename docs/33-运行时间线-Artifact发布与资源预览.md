@@ -26,6 +26,8 @@ Artifact、普通附件和回答 Markdown 中的受保护图片都先使用 Bear
 
 Desktop 内容区右键语义只把资源名称、媒体类型和固定 open/download capability 返回宿主，不返回上述 object URL、资源 API URL 或鉴权信息。执行时重新定位当前 AttachmentCard、Markdown 链接或 Viewer，并复用左键的 `ViewerTarget` 构造或统一鉴权下载路径。WorkPanel 的 Artifact/Reference 外层 tab 另通过共享契约的版本化 `workPanel.resource.downloadCurrent` host action 请求下载；只有当前 Resource Viewer 注册处理器并复用同一 `downloadViewerTarget`，其他页面静默忽略，动作本身不携带 route、资源 URL、路径或凭据。
 
+Desktop WorkPanel 中的 Artifact/Reference 图片 Viewer 还可声明 v1 preview-review capability。WebClient guest 不拥有批注模型，只根据 Desktop 同步的归一化矩形绘制编号覆盖层、把新框转换为原图像素坐标，并在交接时临时合成带编号 PNG。revision 只向宿主暴露不可逆的短摘要，不回传资源 URL。HTML Viewer 的 sandbox iframe、PDF、音视频、文本与不支持格式不声明该能力；缺少匹配 Desktop contract 时继续只读预览。
+
 ## 边界与非目标
 - Artifact 不负责用户上传；用户上传属于 Composer 附件链路。
 - Resource URL 的权限、ticket 和文件存储由后端负责。

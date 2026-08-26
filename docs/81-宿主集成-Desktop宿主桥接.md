@@ -47,6 +47,10 @@ WebClient 使用 `WeakMap<Element, Descriptor>` 登记消息、代码、Web 链�
 
 WorkPanel 外层 Artifact/Reference tab 的下载不依赖坐标解析。Desktop 只可发送共享契约声明的 v1 `workPanel.resource.downloadCurrent`；统一 Resource Viewer 在挂载期间注册唯一的当前目标处理器，并调用 Content Viewer 既有鉴权下载执行器。动作不包含资源身份，未挂载 Resource Viewer、版本错误或处理器已卸载时无操作，Desktop 不解析 `/resource-viewer` route 来复制 Platform 权限逻辑。
 
+WorkPanel 评审批注复用同一 service action channel，但使用独立版本化 preview-review action 与 page event。Resource Viewer 只在当前可访问的图片目标上声明 capability，接收编辑模式和编号矩形的无状态同步，并按请求导出有尺寸/字节上限的临时 PNG；批注权威状态始终在 Desktop renderer。现有 HTML Viewer 仍位于不带 same-origin 能力的 sandbox iframe，因此 V1 必须安全降级为只读，不能放宽 iframe 隔离或提供任意 JavaScript/CDP 执行来换取元素定位。
+
+Main Chat Composer 只消费 owner Chat 匹配的 `workPanel.composer.insertDraft`。草稿为空时填入，非空时追加分隔符；可选 PNG 先转为本地 `staged` 附件，不在动作处理时上传，也不自动发送。WebClient 通过共享 preview-review page event 返回一次 ack，Desktop 只有收到成功 ack 才清理运行期 ReviewSession。vendored contract hash、Desktop mirror 与 Program Bundle 必须原子发布，缺少新能力时保持只读。
+
 ## 相关文件
 - `../src/shared/data/desktop/desktopHostBridge.ts`
 - `../src/shared/data/auth/appAuth.ts`

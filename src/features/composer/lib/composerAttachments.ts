@@ -27,7 +27,7 @@ export interface ComposerAttachment {
 	mimeType?: string;
 	resourceUrl?: string;
 	previewUrl?: string;
-	status: "uploading" | "ready" | "error";
+	status: "staged" | "uploading" | "ready" | "error";
 	error: string;
 	references: unknown[];
 }
@@ -195,7 +195,7 @@ export async function uploadComposerAttachments(input: {
 	setAttachments: Dispatch<SetStateAction<ComposerAttachment[]>>;
 	setAttachmentChatId: Dispatch<SetStateAction<string>>;
 	isLatestAttachment?: (attachment: ComposerAttachment) => boolean;
-}): Promise<void> {
+}): Promise<boolean> {
 	const {
 		files,
 		nextAttachments,
@@ -208,6 +208,7 @@ export async function uploadComposerAttachments(input: {
 	} = input;
 
 	let nextChatId = String(state.chatId || attachmentChatId || "").trim();
+	let allSucceeded = true;
 	for (const [index, attachment] of nextAttachments.entries()) {
 		const file = files[index];
 		try {
@@ -272,6 +273,7 @@ export async function uploadComposerAttachments(input: {
 				),
 			);
 		} catch (error) {
+			allSucceeded = false;
 			setAttachments((current) =>
 				current.map((item) =>
 					item.id === attachment.id
@@ -286,4 +288,5 @@ export async function uploadComposerAttachments(input: {
 			);
 		}
 	}
+	return allSucceeded;
 }

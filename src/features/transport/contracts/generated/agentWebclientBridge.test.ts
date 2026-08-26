@@ -8,6 +8,8 @@ import {
   AGENT_WEBCLIENT_PLATFORM_FRAME_PORT_GLOBAL,
   AGENT_WEBCLIENT_PLATFORM_FRAME_PORT_TRANSPORT_VERSION,
   AGENT_WEBCLIENT_WORKPANEL_BRIDGE_GLOBAL,
+  AGENT_WEBCLIENT_COMPOSER_DRAFT_ACTION,
+  AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_ACTION,
   AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_ACTION,
   AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_VERSION,
   isAgentWebclientSurfaceKind,
@@ -29,12 +31,18 @@ describe("generated Agent WebClient bridge contract", () => {
       "workPanel.resource.downloadCurrent",
     );
     expect(AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_VERSION).toBe(1);
+    expect(AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_ACTION).toBe(
+      "workPanel.previewReview.dispatch",
+    );
+    expect(AGENT_WEBCLIENT_COMPOSER_DRAFT_ACTION).toBe(
+      "workPanel.composer.insertDraft",
+    );
     expect(isAgentWebclientSurfaceKind("agent-management")).toBe(true);
     expect(source).toContain(
-      "sha256:d28c04d0e9e56948844a35188ddb563333407bccda8d5b6422bde4759cd8a20f",
+      "sha256:12789715cf1df528ec26c5ddc0cb9fbb415ff62a7de6835928487b229c219f0e",
     );
     expect(createHash("sha256").update(canonicalSource).digest("hex")).toBe(
-      "1e896b410af4535c0ecebbdf9265cfeeeaf5479efb2e89baffde5b494d2ef109",
+      "f54ab21cee175e17af9ebd439656be596f454cca79377b9f2b55342660caa31f",
     );
   });
 

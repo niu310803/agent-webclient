@@ -223,4 +223,27 @@ describe("composerAttachments", () => {
 		);
 		expect(setAttachments).toHaveBeenCalledTimes(1);
 	});
+
+	it("reports a failed staged upload so Composer does not send without its reference", async () => {
+		const [pendingAttachment] = createPendingComposerAttachments([
+			{ name: "annotated.png", type: "image/png", size: 3 } as File,
+		]);
+		(uploadFile as jest.Mock).mockRejectedValueOnce(new Error("upload failed"));
+		const succeeded = await uploadComposerAttachments({
+			files: [{ name: "annotated.png" } as File],
+			nextAttachments: [pendingAttachment],
+			attachmentChatId: "chat_1",
+			state: {
+				chatId: "chat_1",
+				chatAgentById: {},
+				pendingNewChatAgentKey: "",
+				workerSelectionKey: "",
+				workerIndexByKey: {},
+			},
+			dispatch: jest.fn(),
+			setAttachments: jest.fn(),
+			setAttachmentChatId: jest.fn(),
+		});
+		expect(succeeded).toBe(false);
+	});
 });

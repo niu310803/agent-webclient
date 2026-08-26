@@ -173,13 +173,16 @@ jest.mock("@/features/composer/hooks/useComposerAttachments", () => ({
     handleFilePaste: jest.fn(),
     handleRemoveAttachment: jest.fn(),
     hasComposerAttachmentOverflow: false,
+    hasStagedAttachments: false,
     hasUploadingAttachments: false,
     isCapturingDesktopScreenshot: false,
     openFilePicker: jest.fn(),
     scrollComposerAttachments: jest.fn(),
+    stageReviewAttachment: jest.fn(),
     sendAttachmentMeta: mockComposerAttachmentsState.sendAttachmentMeta,
     sendReferences: mockComposerAttachmentsState.sendReferences,
     useUnifiedComposerAttachmentRow: false,
+    uploadStagedAttachments: jest.fn(async () => true),
   }),
 }));
 

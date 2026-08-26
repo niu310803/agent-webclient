@@ -65,6 +65,7 @@ export function useComposerAttachments(input: UseComposerAttachmentsInput) {
   const attachmentViewportRef = useRef<HTMLDivElement>(null);
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
   const latestAttachmentIdByNameRef = useRef(new Map<string, string>());
+  const stagedFilesByAttachmentIdRef = useRef(new Map<string, File>());
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentChatId, setAttachmentChatId] = useState("");
   const [isCapturingDesktopScreenshot, setIsCapturingDesktopScreenshot] =
@@ -81,6 +82,10 @@ export function useComposerAttachments(input: UseComposerAttachmentsInput) {
   );
   const hasUploadingAttachments = useMemo(
     () => attachments.some((attachment) => attachment.status === "uploading"),
+    [attachments],
+  );
+  const hasStagedAttachments = useMemo(
+    () => attachments.some((attachment) => attachment.status === "staged"),
     [attachments],
   );
   const sendReferences = useMemo(
@@ -168,6 +173,7 @@ export function useComposerAttachments(input: UseComposerAttachmentsInput) {
       revokeAttachmentPreviewUrl(attachment.previewUrl);
     });
     latestAttachmentIdByNameRef.current.clear();
+    stagedFilesByAttachmentIdRef.current.clear();
     setAttachments([]);
     setAttachmentChatId("");
     setAttachmentScrollState({
@@ -212,6 +218,7 @@ export function useComposerAttachments(input: UseComposerAttachmentsInput) {
           (attachment) => attachment.id === attachmentId,
         );
         if (removedAttachment) {
+          stagedFilesByAttachmentIdRef.current.delete(removedAttachment.id);
           revokeAttachmentPreviewUrl(removedAttachment.previewUrl);
           const nameKey = getComposerAttachmentNameKey(removedAttachment);
           if (
@@ -342,6 +349,96 @@ export function useComposerAttachments(input: UseComposerAttachmentsInput) {
     uploadFiles,
   ]);
 
+  const stageReviewAttachment = useCallback(
+    (file: File) => {
+      if (
+        !file ||
+        file.type !== "image/png" ||
+        file.size <= 0 ||
+        file.size > 12 * 1024 * 1024 ||
+        mainChatRunning ||
+        isFrontendActive ||
+        isVoiceMode
+      ) {
+        return false;
+      }
+      const [pending] = createPendingComposerAttachments([file]);
+      if (!pending) return false;
+      const staged: ComposerAttachment = { ...pending, status: "staged" };
+      const nameKey = getComposerAttachmentNameKey(staged);
+      latestAttachmentIdByNameRef.current.set(nameKey, staged.id);
+      stagedFilesByAttachmentIdRef.current.set(staged.id, file);
+      setAttachments((current) => {
+        const retained = current.filter((attachment) => {
+          if (getComposerAttachmentNameKey(attachment) !== nameKey) return true;
+          revokeAttachmentPreviewUrl(attachment.previewUrl);
+          stagedFilesByAttachmentIdRef.current.delete(attachment.id);
+          return false;
+        });
+        stagedFilesByAttachmentIdRef.current.set(staged.id, file);
+        return [...retained, staged];
+      });
+      return true;
+    },
+    [isFrontendActive, isVoiceMode, mainChatRunning],
+  );
+
+  const uploadStagedAttachments = useCallback(async () => {
+    const staged = attachmentsRef.current.filter(
+      (attachment) => attachment.status === "staged",
+    );
+    if (staged.length === 0) return true;
+    const files = staged.map((attachment) =>
+      stagedFilesByAttachmentIdRef.current.get(attachment.id),
+    );
+    if (files.some((file) => !file)) return false;
+    setAttachments((current) => current.map((attachment) =>
+      staged.some((candidate) => candidate.id === attachment.id)
+        ? { ...attachment, status: "uploading", error: "" }
+        : attachment,
+    ));
+    const succeeded = await uploadComposerAttachments({
+      files: files as File[],
+      nextAttachments: staged.map((attachment) => ({ ...attachment, status: "uploading" })),
+      attachmentChatId,
+      state: {
+        chatId: state.chatId,
+        chatAgentById: state.chatAgentById,
+        pendingNewChatAgentKey: state.pendingNewChatAgentKey,
+        workerSelectionKey: state.workerSelectionKey,
+        workerIndexByKey: state.workerIndexByKey,
+      },
+      dispatch,
+      setAttachments,
+      setAttachmentChatId,
+      isLatestAttachment: (attachment) =>
+        latestAttachmentIdByNameRef.current.get(
+          getComposerAttachmentNameKey(attachment),
+        ) === attachment.id,
+    });
+    if (succeeded) {
+      staged.forEach((attachment) => {
+        stagedFilesByAttachmentIdRef.current.delete(attachment.id);
+      });
+    } else {
+      setAttachments((current) => current.map((attachment) =>
+        staged.some((candidate) => candidate.id === attachment.id) &&
+        attachment.status === "error"
+          ? { ...attachment, status: "staged" }
+          : attachment,
+      ));
+    }
+    return succeeded;
+  }, [
+    attachmentChatId,
+    dispatch,
+    state.chatAgentById,
+    state.chatId,
+    state.pendingNewChatAgentKey,
+    state.workerIndexByKey,
+    state.workerSelectionKey,
+  ]);
+
   const handleFileSelection = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files || []);
@@ -435,6 +532,7 @@ export function useComposerAttachments(input: UseComposerAttachmentsInput) {
       attachmentsRef.current.forEach((attachment) => {
         revokeAttachmentPreviewUrl(attachment.previewUrl);
       });
+      stagedFilesByAttachmentIdRef.current.clear();
     },
     [],
   );
@@ -478,14 +576,17 @@ export function useComposerAttachments(input: UseComposerAttachmentsInput) {
     handleFilePaste,
     handleRemoveAttachment,
     hasComposerAttachmentOverflow,
+    hasStagedAttachments,
     hasUploadingAttachments,
     isCapturingDesktopScreenshot,
     openFilePicker,
     readyAttachments,
+    stageReviewAttachment,
     scrollComposerAttachments,
     sendAttachmentMeta,
     sendReferences,
     setAttachments,
     useUnifiedComposerAttachmentRow,
+    uploadStagedAttachments,
   };
 }

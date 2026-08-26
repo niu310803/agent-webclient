@@ -101,6 +101,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
   const composerPillRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<TextAreaRef>(null);
   const isComposingRef = useRef(false);
+  const deferredSendRequestedRef = useRef(false);
   const [inputValue, setInputValue] = useState("");
   const [controlParams, setControlParams] = useState<Record<string, unknown>>(
     {},
@@ -260,13 +261,16 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     handleFilePaste,
     handleRemoveAttachment,
     hasComposerAttachmentOverflow,
+    hasStagedAttachments,
     hasUploadingAttachments,
     isCapturingDesktopScreenshot,
     openFilePicker,
     scrollComposerAttachments,
+    stageReviewAttachment,
     sendAttachmentMeta,
     sendReferences,
     useUnifiedComposerAttachmentRow,
+    uploadStagedAttachments,
   } = useComposerAttachments({
     dispatch,
     isFrontendActive,
@@ -493,7 +497,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     applyComposerDraft,
     executeSlashCommand,
     handleCancelSteer,
-    handleSend,
+    handleSend: handleSendImmediately,
     handleSteer,
     interruptCurrentRun,
     steerSubmitting,
@@ -557,6 +561,28 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     textareaRef,
     updateMentionSuggestions,
   });
+
+  const handleSend = useCallback(() => {
+    if (!hasStagedAttachments) {
+      handleSendImmediately();
+      return;
+    }
+    if (deferredSendRequestedRef.current) return;
+    deferredSendRequestedRef.current = true;
+    void uploadStagedAttachments().then((succeeded) => {
+      if (!succeeded) deferredSendRequestedRef.current = false;
+    });
+  }, [handleSendImmediately, hasStagedAttachments, uploadStagedAttachments]);
+
+  useEffect(() => {
+    if (
+      !deferredSendRequestedRef.current ||
+      hasStagedAttachments ||
+      hasUploadingAttachments
+    ) return;
+    deferredSendRequestedRef.current = false;
+    handleSendImmediately();
+  }, [handleSendImmediately, hasStagedAttachments, hasUploadingAttachments]);
 
   const handleSelectSlashItem = useCallback(
     (item: SlashPaletteItem) => {
@@ -639,6 +665,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     isFrontendActive,
     isVoiceMode,
     setInputValue,
+    stageReviewAttachment,
     setSlashDismissed,
     stopSpeechInput,
     textareaRef,
