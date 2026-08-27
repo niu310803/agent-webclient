@@ -1,271 +1,489 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Switch, Typography } from "antd";
+import { Input, Popover, Switch, Typography } from "antd";
+import type { InputRef } from "antd";
 import type { Chat } from "@/app/state/types";
+import type { ComposerContextReferenceInput } from "@/features/composer/lib/composerAttachments";
+import {
+  isSlashCommandDisabled,
+  type ResolvedSlashCommandDefinition,
+  type SlashCommandAvailability,
+} from "@/features/composer/lib/slashCommands";
+import { getChats, type AgentSkill } from "@/shared/data";
+import {
+  canUseDesktopWebsBridge,
+  listDesktopWebEntries,
+  type DesktopWebEntry,
+} from "@/shared/data/desktop/desktopWebs";
+import { useAgentSkillsQuery } from "@/shared/data/query/queries";
 import { useI18n } from "@/shared/i18n";
-import { MaterialIcon } from "@/shared/ui/MaterialIcon";
-import type { MaterialIconName } from "@/shared/ui/MaterialIcon";
+import { MaterialIcon, type MaterialIconName } from "@/shared/ui/MaterialIcon";
 import { UiButton } from "@/shared/ui/UiButton";
 
-const ADD_MENU_POPOVER_CLASS =
-  "add-menu-popover tw:max-h-[min(360px,calc(100vh-120px))] tw:overflow-auto tw:rounded-panel tw:border tw:border-line-soft tw:bg-bg-base";
-const ADD_MENU_LIST_CLASS = "add-menu-list tw:flex tw:flex-col tw:gap-1 tw:p-1";
-const ADD_MENU_GROUP_LABEL_CLASS =
-  "tw:px-2 tw:pb-0.5 tw:pt-1.5 tw:text-xs tw:font-bold tw:tracking-[0.08em] tw:text-text-muted tw:sticky tw:top-0 tw:bg-bg-base tw:z-10";
-const ADD_MENU_ITEM_CLASS = "add-menu-item";
-const ADD_MENU_ITEM_STATE_CLASS = {
-  idle: "",
-  active: "active tw:!bg-bg-hover",
-} as const;
-const ADD_MENU_ITEM_LABEL_CLASS =
-  "add-menu-item-label tw:text-xs tw:text-text-main tw:!max-w-[150px]";
-const ADD_MENU_ITEM_SUFFIX_CLASS =
-  "add-menu-item-suffix tw:text-xs tw:text-text-muted tw:flex-1";
-
-function addMenuItemStateClass(active: boolean): string {
-  return active
-    ? ADD_MENU_ITEM_STATE_CLASS.active
-    : ADD_MENU_ITEM_STATE_CLASS.idle;
+type Section = "files" | "mode" | "skills" | "commands" | "chat" | "site";
+export interface AddMenuTriggerProps {
+  disabled: boolean;
+  loading: boolean;
+  currentChatId: string;
+  currentAgentKey: string;
+  planningMode: boolean;
+  editingMode: boolean;
+  canUsePlanningMode: boolean;
+  canUseEditingMode: boolean;
+  isMainChatRunning: boolean;
+  selectedSkillKeys: string[];
+  slashCommands: ResolvedSlashCommandDefinition[];
+  slashAvailability: SlashCommandAvailability;
+  onOpenFilePicker: () => void;
+  onAddReference: (reference: ComposerContextReferenceInput) => void;
+  onTogglePlanningMode: () => void;
+  onEditingModeChange: (enabled: boolean) => void;
+  onSelectSkill: (skill: AgentSkill) => void;
+  onSelectCommand: (id: ResolvedSlashCommandDefinition["id"]) => void;
 }
 
-export type AddMenuItem = {
-  kind?: undefined;
-  key: string;
-  icon: MaterialIconName;
-  label: string;
-  disabled: boolean;
-  suffix?: string;
-  check?: boolean;
-  action: () => void;
+// 每个面板可指定宽度（px），缺省 200
+const sectionMeta: Record<
+  Section,
+  { icon: MaterialIconName; key: string; detailWidth?: number }
+> = {
+  files: { icon: "attach_file", key: "composer.addMenu.section.files" },
+  mode: { icon: "checklist", key: "composer.addMenu.section.mode" },
+  skills: {
+    icon: "skills",
+    key: "composer.addMenu.section.skills",
+    detailWidth: 320,
+  },
+  commands: {
+    icon: "terminal",
+    key: "composer.addMenu.section.commands",
+    detailWidth: 320,
+  },
+  chat: {
+    icon: "question_answer",
+    key: "composer.addMenu.section.chat",
+    detailWidth: 320,
+  },
+  site: {
+    icon: "open_in_new",
+    key: "composer.addMenu.section.site",
+    detailWidth: 320,
+  },
+};
+// 一级面板导航条目："divider" 为分割线，可自由插入任意位置
+type NavEntry = Section | "divider";
+const sectionNav: NavEntry[] = [
+  "files",
+  "divider",
+  "mode",
+  "skills",
+  "commands",
+  "chat",
+  "site",
+];
+const DEFAULT_DETAIL_WIDTH = 200;
+const text = (value: unknown) =>
+  typeof value === "string" ? value.trim() : "";
+const normalizeChats = (value: unknown): Chat[] =>
+  Array.isArray(value)
+    ? value.filter((chat): chat is Chat =>
+        Boolean(chat && text((chat as Chat).chatId)),
+      )
+    : [];
+
+const searchPlaceholderKey: Partial<Record<Section, string>> = {
+  skills: "composer.addMenu.search.skills",
+  commands: "composer.addMenu.search.commands",
+  chat: "composer.addMenu.chat.search",
+  site: "composer.addMenu.site.search",
 };
 
-export type AddMenuGroup = {
-  kind: "group";
-  key: string;
-  label: string;
-};
-
-export type AddMenuEntry = AddMenuItem | AddMenuGroup;
-
-export const AddMenuContent: React.FC<{
-  hashPaletteRef: React.RefObject<HTMLDivElement>;
-  menuEntries: AddMenuEntry[];
-  isOpen: boolean;
-  filterText: string;
-  emptyText: string;
-  onClose: () => void;
-}> = ({
-  hashPaletteRef,
-  menuEntries,
-  isOpen,
-  filterText,
-  emptyText,
-  onClose,
-}) => {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const itemsRef = useRef<HTMLElement[]>([]);
-
-  const filteredEntries = useMemo(() => {
-    const keyword = filterText.trim().toLowerCase();
-    if (!keyword) return menuEntries;
-
-    return menuEntries.filter((entry) => {
-      if (entry.kind === "group") return false;
-      const item = entry as AddMenuItem;
-      return item.label.toLowerCase().includes(keyword);
-    });
-  }, [menuEntries, filterText]);
-
-  const actionItems = useMemo(
-    () => filteredEntries.filter((e) => e.kind !== "group") as AddMenuItem[],
-    [filteredEntries],
+const AddMenuSectionDetail: React.FC<
+  AddMenuTriggerProps & {
+    section: Section;
+    onClose: () => void;
+    search: string;
+    onSearchChange: (value: string) => void;
+  }
+> = (props) => {
+  const { t } = useI18n();
+  const { section, search, onSearchChange } = props;
+  const searchRef = useRef<InputRef>(null);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [sites, setSites] = useState<DesktopWebEntry[]>([]);
+  const [loadingContext, setLoadingContext] = useState(true);
+  const searchable = Boolean(searchPlaceholderKey[section]);
+  const keyword = search.trim().toLowerCase();
+  const matchKeyword = (...values: string[]) =>
+    !keyword || values.some((value) => value.toLowerCase().includes(keyword));
+  const skillQuery = useAgentSkillsQuery(props.currentAgentKey, {
+    enabled: section === "skills",
+  });
+  const skills = skillQuery.data?.skills || [];
+  const filteredSkills = skills.filter((skill) =>
+    matchKeyword(skill.name || skill.key, skill.key, skill.description || ""),
   );
-
-  // Reset activeIndex when open changes
+  const filteredCommands = props.slashCommands.filter((command) =>
+    matchKeyword(command.label, command.description, command.id),
+  );
+  const filteredChats = chats.filter((chat) =>
+    matchKeyword(text(chat.chatName) || chat.chatId, chat.chatId),
+  );
+  const filteredSites = sites.filter((site) =>
+    matchKeyword(site.label, site.url || "", site.entryKey),
+  );
+  const selected = useMemo(
+    () =>
+      new Set(props.selectedSkillKeys.map((key) => text(key).toLowerCase())),
+    [props.selectedSkillKeys],
+  );
+  const siteAvailable = canUseDesktopWebsBridge();
   useEffect(() => {
-    if (isOpen) {
-      setActiveIndex(0);
+    if (!searchable) return;
+    // 等待 Popover 动画后再聚焦，避免 autoFocus 在挂载时机下失效
+    const timer = window.setTimeout(() => {
+      searchRef.current?.focus();
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [searchable]);
+  useEffect(() => {
+    if (section !== "chat" && section !== "site") return;
+    setLoadingContext(true);
+    if (section === "chat") {
+      void getChats({ agentKey: props.currentAgentKey })
+        .then((chatResult) => {
+          setChats(
+            normalizeChats(chatResult.data).filter(
+              (chat) => text(chat.chatId) !== text(props.currentChatId),
+            ),
+          );
+        })
+        .catch(() => undefined)
+        .finally(() => setLoadingContext(false));
+    } else {
+      void (siteAvailable ? listDesktopWebEntries() : Promise.resolve([]))
+        .then((nextSites) => {
+          setSites(nextSites);
+        })
+        .catch(() => undefined)
+        .finally(() => setLoadingContext(false));
     }
-  }, [isOpen]);
-
-  // Scroll active item into view
-  useEffect(() => {
-    if (actionItems.length === 0) return;
-    const idx = Math.min(activeIndex, actionItems.length - 1);
-    const el = itemsRef.current[idx];
-    el?.scrollIntoView?.({ block: "nearest" });
-  }, [activeIndex, actionItems]);
-
-  // Keyboard navigation
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        if (actionItems.length > 0) {
-          setActiveIndex((prev) => (prev + 1) % actionItems.length);
-        }
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        if (actionItems.length > 0) {
-          setActiveIndex(
-            (prev) => (prev - 1 + actionItems.length) % actionItems.length,
-          );
-        }
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        e.stopPropagation();
-        const item = actionItems[activeIndex];
-        if (item && !item.disabled) {
-          item.action();
-          onClose();
-        }
-      }
-    };
-
-    // 捕获阶段监听，确保先于 Composer 输入框的 keydown 处理
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [activeIndex, actionItems, isOpen]);
-
-  let itemIndex = 0;
-
+  }, [props.currentAgentKey, props.currentChatId, section, siteAvailable]);
+  const execute = (action: () => void) => {
+    action();
+    props.onClose();
+  };
+  const item = (
+    content: React.ReactNode,
+    action: () => void,
+    disabled = false,
+  ) => (
+    <UiButton
+      variant="ghost"
+      size="sm"
+      className="composer-add-menu-detail-item"
+      disabled={disabled}
+      onClick={() => execute(action)}
+    >
+      {content}
+    </UiButton>
+  );
+  const detailWidth = sectionMeta[section].detailWidth || DEFAULT_DETAIL_WIDTH;
   return (
-    <div ref={hashPaletteRef} className={ADD_MENU_POPOVER_CLASS}>
-      <div className={ADD_MENU_LIST_CLASS} role="listbox" aria-label="Add menu">
-        {filteredEntries.map((entry) => {
-          if (entry.kind === "group") {
-            return (
-              <div key={entry.key} className={ADD_MENU_GROUP_LABEL_CLASS}>
-                {entry.label}
-              </div>
-            );
-          }
-
-          const item = entry as AddMenuItem;
-          const idx = itemIndex;
-          itemIndex += 1;
-
-          return (
-            <UiButton
-              key={item.key}
-              ref={(ref) => ref && (itemsRef.current[idx] = ref)}
-              className={`${ADD_MENU_ITEM_CLASS} ${addMenuItemStateClass(idx === activeIndex)}`}
-              variant="ghost"
-              size="sm"
-              disabled={item.disabled}
-              role="option"
-              aria-selected={idx === activeIndex}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                if (!item.disabled) {
-                  item.action();
-                  onClose();
-                }
-              }}
-            >
-              <MaterialIcon
-                name={item.icon}
-                className="ui-icon-hover-24 tw:text-accent"
-              />
-              <Typography.Text
-                className={ADD_MENU_ITEM_LABEL_CLASS}
-                ellipsis={{ tooltip: item.label }}
-              >
-                {item.label}
-              </Typography.Text>
-              {item.suffix ? (
-                <Typography.Text
-                  className={ADD_MENU_ITEM_SUFFIX_CLASS}
-                  ellipsis={{
-                    tooltip: {
-                      title: item.suffix,
-                      placement: "topRight",
-                    },
-                  }}
-                >
-                  {item.suffix}
-                </Typography.Text>
-              ) : null}
-              {item.check !== undefined ? (
-                <Switch
-                  size="small"
-                  checked={item.check}
-                  disabled={item.disabled}
-                  onChange={() => {
-                    item.action();
-                  }}
-                  onClick={(_, event) => event.stopPropagation()}
-                />
-              ) : null}
-            </UiButton>
-          );
-        })}
-        {filteredEntries.length === 0 && (
-          <div className="tw:px-2 tw:py-4 tw:text-center tw:text-xs tw:text-text-muted">
-            {emptyText}
-          </div>
+    <div
+      className="composer-add-menu-detail"
+      style={{ width: `min(${detailWidth}px, calc(100vw - 24px))` }}
+    >
+      {searchable && (
+        <Input
+          ref={searchRef}
+          prefix={<MaterialIcon name="search" />}
+          variant="filled"
+          value={search}
+          placeholder={t(searchPlaceholderKey[section] || "")}
+          onChange={(event) => onSearchChange(event.target.value)}
+          style={{ marginBottom: 10 }}
+        />
+      )}
+      {section === "files" &&
+        item(
+          <>
+            <MaterialIcon name="folder" />
+            <span>{t("composer.addMenu.file")}</span>
+          </>,
+          props.onOpenFilePicker,
         )}
-      </div>
+      {section === "mode" && (
+        <div className="composer-add-menu-mode">
+          {props.canUsePlanningMode &&
+            item(
+              <>
+                <span>{t("composer.addMenu.mode.planning")}</span>
+                <Switch size="small" checked={props.planningMode} />
+              </>,
+              props.onTogglePlanningMode,
+            )}
+          {!props.canUsePlanningMode &&
+            props.canUseEditingMode &&
+            item(
+              <>
+                <span>{t("composer.addMenu.mode.editing")}</span>
+                <Switch size="small" checked={props.editingMode} />
+              </>,
+              () => props.onEditingModeChange(!props.editingMode),
+            )}
+        </div>
+      )}
+      {section === "skills" && (
+        <div className="composer-add-menu-scroll">
+          {filteredSkills.map((skill) =>
+            item(
+              <>
+                <MaterialIcon name="skills" />
+                <span className="composer-add-menu-item-copy">
+                  <b>{skill.name || skill.key}</b>
+                  <small>
+                    {skill.description || t("slashPalette.skill.noDescription")}
+                  </small>
+                </span>
+                {selected.has(skill.key.toLowerCase()) && (
+                  <MaterialIcon name="check" />
+                )}
+              </>,
+              () => props.onSelectSkill(skill),
+              props.isMainChatRunning,
+            ),
+          )}
+          {skillQuery.status === "loading" && (
+            <div className="composer-add-menu-status">
+              {t("slashPalette.skills.loading")}
+            </div>
+          )}
+          {skillQuery.status === "error" && (
+            <div
+              className="composer-add-menu-status"
+              title={skillQuery.error?.message}
+            >
+              {t("slashPalette.skills.loadFailed")}
+              <UiButton
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  void skillQuery.refetch().catch(() => undefined);
+                }}
+              >
+                {t("slashPalette.skills.retry")}
+              </UiButton>
+            </div>
+          )}
+          {skillQuery.status === "success" && !skills.length && (
+            <div className="composer-add-menu-status">
+              {t("slashPalette.skills.empty")}
+            </div>
+          )}
+          {skillQuery.status === "success" &&
+            !!skills.length &&
+            !filteredSkills.length && (
+              <div className="composer-add-menu-status">
+                {t("composer.addMenu.empty")}
+              </div>
+            )}
+        </div>
+      )}
+      {section === "commands" && (
+        <div className="composer-add-menu-scroll">
+          {filteredCommands.map((command) =>
+            item(
+              <>
+                <MaterialIcon name={command.icon} />
+                <span className="composer-add-menu-item-copy">
+                  <b>{command.label}</b>
+                  <small>{command.description}</small>
+                </span>
+              </>,
+              () => props.onSelectCommand(command.id),
+              isSlashCommandDisabled(command.id, props.slashAvailability),
+            ),
+          )}
+          {!filteredCommands.length && (
+            <div className="composer-add-menu-status">
+              {t("composer.addMenu.empty")}
+            </div>
+          )}
+        </div>
+      )}
+      {section === "chat" && (
+        <div className="composer-add-menu-scroll">
+          {loadingContext && (
+            <div className="composer-add-menu-status">
+              {t("composer.addMenu.loading")}
+            </div>
+          )}
+          {!loadingContext && !chats.length && (
+            <div className="composer-add-menu-status">
+              {t("composer.addMenu.chat.empty")}
+            </div>
+          )}
+          {!loadingContext && !!chats.length && !filteredChats.length && (
+            <div className="composer-add-menu-status">
+              {t("composer.addMenu.empty")}
+            </div>
+          )}
+          {filteredChats.map((chat) =>
+            item(
+              <>
+                <MaterialIcon name="question_answer" />
+                <Typography.Text ellipsis>
+                  {text(chat.chatName) || chat.chatId}
+                </Typography.Text>
+              </>,
+              () =>
+                props.onAddReference({
+                  type: "chat",
+                  id: chat.chatId,
+                  name: text(chat.chatName) || chat.chatId,
+                }),
+            ),
+          )}
+        </div>
+      )}
+      {section === "site" && (
+        <div className="composer-add-menu-scroll">
+          {loadingContext && (
+            <div className="composer-add-menu-status">
+              {t("composer.addMenu.loading")}
+            </div>
+          )}
+          {!loadingContext && !sites.length && (
+            <div className="composer-add-menu-status">
+              {t("composer.addMenu.site.empty")}
+            </div>
+          )}
+          {!loadingContext && !!sites.length && !filteredSites.length && (
+            <div className="composer-add-menu-status">
+              {t("composer.addMenu.empty")}
+            </div>
+          )}
+          {filteredSites.map((site) =>
+            item(
+              <>
+                <MaterialIcon name="open_in_new" />
+                <span>{site.label}</span>
+              </>,
+              () =>
+                props.onAddReference({
+                  type: "site",
+                  id: site.entryKey,
+                  name: site.label,
+                  ...(site.url ? { url: site.url } : {}),
+                }),
+            ),
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
-// ========== AddMenuTrigger ==========
-
-interface AddMenuTriggerProps {
-  disabled: boolean;
-  loading: boolean;
-  onClick: () => void;
-}
-
-const PLUS_BUTTON_CLASS =
-  "composer-plus-btn tw:!grid tw:!h-8 tw:!min-h-8 tw:!w-8 tw:!min-w-8 tw:!place-items-center tw:!rounded-lg tw:!border-0 tw:!bg-transparent tw:!p-0 tw:!text-ink-2 tw:hover:!bg-bg-hover tw:hover:!text-ink-1 tw:[&_.material-icon]:text-lg";
-
-export const AddMenuTrigger: React.FC<AddMenuTriggerProps> = ({
-  disabled,
-  loading,
-  onClick,
-}) => {
+const AddMenuPanel: React.FC<AddMenuTriggerProps & { onClose: () => void }> = (
+  props,
+) => {
   const { t } = useI18n();
-
+  const [section, setSection] = useState<Section | null>(null);
+  const [search, setSearch] = useState("");
+  // 切换面板时重置搜索词，与原先面板销毁重建的行为保持一致
+  useEffect(() => {
+    setSearch("");
+  }, [section]);
+  // mode / site 在不可用时跳过，分割线条目保持原位
+  const navEntries = sectionNav.filter((entry) => {
+    if (entry === "divider") return true;
+    if (entry === "site") return canUseDesktopWebsBridge();
+    if (entry === "mode")
+      return props.canUsePlanningMode || props.canUseEditingMode;
+    return true;
+  });
   return (
-    <UiButton
-      className={PLUS_BUTTON_CLASS}
-      variant="ghost"
-      size="sm"
-      iconOnly
-      loading={loading}
-      disabled={disabled}
-      onClick={onClick}
-      aria-label={t("composer.addMenu.open")}
-      title={t("composer.addMenu.open")}
-    >
-      <MaterialIcon name="add" />
-    </UiButton>
+    <div className="composer-add-menu-nav" role="menu">
+      {navEntries.map((entry, index) =>
+        entry === "divider" ? (
+          <div
+            key={`divider-${index}`}
+            className="composer-add-menu-divider"
+            aria-hidden="true"
+          />
+        ) : (
+          <Popover
+            key={entry}
+            open={section === entry}
+            onOpenChange={(next) => {
+              // 搜索框有内容时不响应 hover 移出关闭，避免输入中被误关
+              if (!next && search.trim()) return;
+              setSection((prev) =>
+                next ? entry : prev === entry ? null : prev,
+              );
+            }}
+            trigger="hover"
+            placement="rightBottom"
+            arrow={false}
+            destroyOnHidden
+            mouseEnterDelay={0.05}
+            mouseLeaveDelay={0.15}
+            classNames={{ root: "composer-add-menu-overlay" }}
+            content={
+              <AddMenuSectionDetail
+                {...props}
+                section={entry}
+                onClose={props.onClose}
+                search={search}
+                onSearchChange={setSearch}
+              />
+            }
+          >
+            <UiButton
+              variant="ghost"
+              size="sm"
+              role="menuitem"
+              className={`composer-add-menu-nav-item ${section === entry ? "is-active" : ""}`}
+              onClick={() => setSection(entry)}
+              onFocus={() => setSection(entry)}
+            >
+              <MaterialIcon name={sectionMeta[entry].icon} />
+              <span>{t(sectionMeta[entry].key)}</span>
+              <MaterialIcon name="keyboard_arrow_right" />
+            </UiButton>
+          </Popover>
+        ),
+      )}
+    </div>
   );
 };
 
-// ========== Helpers ==========
-
-export function normalizeText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-export function normalizeChats(value: unknown): Chat[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const seen = new Set<string>();
-  return value.filter((candidate): candidate is Chat => {
-    if (!candidate || typeof candidate !== "object") {
-      return false;
-    }
-    const chatId = normalizeText((candidate as Chat).chatId);
-    if (!chatId || seen.has(chatId)) {
-      return false;
-    }
-    seen.add(chatId);
-    return true;
-  });
-}
+export const AddMenuTrigger: React.FC<AddMenuTriggerProps> = (props) => {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      trigger="click"
+      placement="topLeft"
+      arrow={false}
+      destroyOnHidden
+      classNames={{ root: "composer-add-menu-overlay" }}
+      content={<AddMenuPanel {...props} onClose={() => setOpen(false)} />}
+    >
+      <UiButton
+        className={`composer-plus-btn tw:!grid tw:!h-8 tw:!min-h-8 tw:!w-8 tw:!min-w-8 tw:!place-items-center tw:!rounded-lg tw:!border-0 tw:!p-0 tw:!text-ink-2 tw:hover:!bg-bg-hover ${open ? "is-open" : ""}`}
+        variant="ghost"
+        size="sm"
+        iconOnly
+        loading={props.loading}
+        disabled={props.disabled}
+        aria-label={t("composer.addMenu.open")}
+        title={t("composer.addMenu.open")}
+      >
+        <MaterialIcon name="add" />
+      </UiButton>
+    </Popover>
+  );
+};

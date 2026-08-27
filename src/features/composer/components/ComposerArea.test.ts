@@ -258,24 +258,6 @@ jest.mock("@/features/composer/hooks/useComposerSlash", () => ({
     mockUseComposerSlash(input),
 }));
 
-jest.mock("@/features/composer/hooks/useComposerHash", () => ({
-  useComposerHash: () => ({
-    showAddMenu: false,
-    setHashDismissed: jest.fn(),
-    hashPaletteRef: React.createRef(),
-    hashPopoverWidth: 320,
-  }),
-}));
-
-const mockUseAddMenuPanel = jest.fn((input: { open: boolean }) => ({
-  open: input.open,
-  content: React.createElement("div", null, "add-menu"),
-}));
-
-jest.mock("@/features/composer/hooks/useAddMenuPanel", () => ({
-  useAddMenuPanel: (input: { open: boolean }) => mockUseAddMenuPanel(input),
-}));
-
 jest.mock("@/features/composer/hooks/useComposerWonders", () => ({
   useComposerWonders: jest.fn(() => ({
     sampledGreeting: "Greeting from detail",
@@ -335,7 +317,6 @@ describe("ComposerArea", () => {
     mockIsDedicatedKbaseWorker.mockReset();
     mockIsDedicatedKbaseWorker.mockReturnValue(false);
     mockUseComposerSlash.mockClear();
-    mockUseAddMenuPanel.mockClear();
     const initialState = createInitialState();
     useAppDispatch.mockReturnValue(jest.fn());
     useAppState.mockReturnValue(initialState);
@@ -393,29 +374,6 @@ describe("ComposerArea", () => {
         activeRunOwner: { kind: "agent", agentKey: "agent_a" },
         isRunActive: true,
       }),
-    );
-  });
-
-  it("keeps the add menu hook call stable while awaiting", () => {
-    const state = createInitialState();
-    mockComposerAwaitingState.isAwaitingActive = true;
-    useAppState.mockReturnValue({
-      ...state,
-      activeAwaiting: {
-        mode: "approval",
-        runId: "run_1",
-        agentKey: "agent_a",
-        awaitingId: "await_1",
-        approvals: [],
-      },
-    });
-
-    const html = renderToStaticMarkup(React.createElement(ComposerArea));
-
-    expect(html).toContain("approval");
-    expect(mockUseAddMenuPanel).toHaveBeenCalledTimes(1);
-    expect(mockUseAddMenuPanel).toHaveBeenCalledWith(
-      expect.objectContaining({ open: false }),
     );
   });
 

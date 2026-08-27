@@ -64,178 +64,127 @@
     font-size: 10px;
 }
 
-.composer-add-menu-overlay .ant-dropdown-menu {
-    width: min(286px, calc(100vw - 24px));
-    max-height: min(70vh, 560px);
-    overflow-y: auto;
-    padding: 8px;
+.composer-add-menu-overlay .ant-popover-inner {
+    padding: 0;
     border: 1px solid color-mix(in srgb, var(--line-soft) 88%, transparent);
     border-radius: 15px;
-    background: color-mix(in srgb, var(--bg-elev-2) 98%, transparent);
-    box-shadow: 0 18px 46px rgba(12, 18, 28, 0.22);
-    backdrop-filter: blur(18px);
+    box-shadow: var(--shadow-soft);
 }
 
-.composer-add-menu-overlay .ant-dropdown-menu-item-group-title {
-    padding: 8px 10px 4px;
-    color: var(--ink-muted);
-    font-size: 12px;
-    line-height: 1.25;
+.composer-add-menu-overlay .ant-popover-inner-content {
+    padding: 0;
 }
 
-.composer-add-menu-overlay .ant-dropdown-menu-item-group-list {
-    margin: 0;
+/* 加号按钮：菜单打开时旋转 45 度变为叉号，并保持 hover 样式 */
+.composer-plus-btn .material-icon {
+    transition: transform 0.2s ease;
 }
 
-.composer-add-menu-overlay .ant-dropdown-menu-item {
-    min-height: 38px;
-    margin: 1px 0;
-    padding: 7px 10px;
-    border-radius: 10px;
+.composer-plus-btn.is-open .material-icon {
+    transform: rotate(45deg);
 }
 
-.composer-add-menu-overlay .ant-dropdown-menu-item-disabled {
-    opacity: 0.48;
-}
-
-.composer-add-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-    width: 100%;
-}
-
-.composer-add-menu-item>.material-icon {
-    flex: 0 0 auto;
-    width: 20px;
-    color: var(--ink-2);
-    font-size: 20px;
-}
-
-.composer-add-menu-item-title {
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
-    color: var(--ink-1);
-    font-size: 14px;
-    line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.composer-add-menu-item-suffix {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
-    color: var(--ink-muted);
-    font-size: 11px;
-}
-
-.composer-add-menu-item-suffix .material-icon {
-    color: var(--accent-electric);
-    font-size: 17px;
-}
-
-.composer-context-required-badge {
-    display: inline-flex;
-    align-items: center;
-    margin-right: 5px;
-    padding: 1px 5px;
-    border-radius: 999px;
-    color: var(--accent-electric-strong);
-    background: color-mix(in srgb, var(--accent-electric) 10%, transparent);
-    font-size: 10px;
-    font-weight: 650;
-    line-height: 1.4;
-}
-
-.composer-reference-picker .ant-modal-content {
-    border: 1px solid color-mix(in srgb, var(--line-soft) 88%, transparent);
-    border-radius: 16px;
-    background: var(--bg-elev-2);
-}
-
-.composer-reference-picker-list {
-    min-height: 220px;
-    max-height: min(48vh, 420px);
-    margin-top: 12px;
-    overflow-y: auto;
-}
-
-.composer-reference-picker-state {
-    min-height: 220px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: var(--ink-muted);
-    font-size: 13px;
-}
-
-.composer-reference-picker-state.is-error {
-    color: var(--accent-danger);
-}
-
-.composer-reference-picker-row.ant-list-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-    padding: 10px;
-    border-block-end: 0;
-    border-radius: 11px;
-    cursor: pointer;
-}
-
-.composer-reference-picker-row.ant-list-item:hover,
-.composer-reference-picker-row.ant-list-item.is-selected {
+.composer-plus-btn.is-open {
     background: var(--bg-hover);
 }
 
-.composer-reference-picker-row.ant-list-item.is-selected {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-electric) 28%, transparent);
-}
-
-.composer-reference-picker-icon {
-    display: grid;
-    flex: 0 0 auto;
-    width: 34px;
-    height: 34px;
-    place-items: center;
-    border-radius: 10px;
-    color: var(--accent-electric);
-    background: color-mix(in srgb, var(--accent-electric) 10%, var(--bg-input));
-}
-
-.composer-reference-picker-icon .material-icon {
-    font-size: 19px;
-}
-
-.composer-reference-picker-copy {
+.composer-add-menu-nav {
     display: flex;
-    min-width: 0;
-    flex: 1;
     flex-direction: column;
-    gap: 3px;
+    padding: 8px;
+    min-width: 200px;
 }
 
-.composer-reference-picker-title,
-.composer-reference-picker-subtitle {
+.composer-add-menu-nav-item.ui-btn,
+.composer-add-menu-detail-item.ui-btn {
+    justify-content: flex-start;
+    min-height: 36px;
+    text-align: left;
+    padding: 6px;
+    color: var(--text-main);
+}
+
+.composer-add-menu-nav-item.ui-btn .ui-btn-label,
+.composer-add-menu-detail-item.ui-btn .ui-btn-label {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 9px;
+    min-width: 0;
+}
+
+.composer-add-menu-nav-item {
+    .material-icon:first-child {
+        color: var(--text-muted);
+    }
+    .material-icon:last-child {
+        margin-left: auto;
+        color: var(--ink-muted);
+        opacity: .6;
+    }
+}
+
+.composer-add-menu-nav-item.is-active {
+    background: var(--bg-hover);
+}
+
+.composer-add-menu-detail {
+    padding: 8px;
+}
+
+.composer-add-menu-divider {
+    margin: 4px 6px;
+    border-top: 1px solid color-mix(in srgb, var(--line-soft) 88%, transparent);
+}
+
+.composer-add-menu-scroll {
+    max-height: 300px;
+    overflow: auto;
+
+    .material-icon {
+        color: var(--accent);
+    }
+}
+
+.composer-add-menu-detail-item {
+    width: 100%;
+}
+
+.composer-add-menu-item-copy {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.composer-add-menu-item-copy b,
+.composer-add-menu-item-copy small {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.composer-reference-picker-title {
-    color: var(--ink-1);
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.composer-reference-picker-subtitle {
+.composer-add-menu-item-copy small {
     color: var(--ink-muted);
     font-size: 11px;
+}
+
+.composer-add-menu-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.composer-add-menu-detail-item .ant-switch {
+    margin-left: auto;
+    pointer-events: none;
+}
+
+.composer-add-menu-status {
+    padding: 12px 8px;
+    color: var(--ink-muted);
+    font-size: 12px;
 }
 
 .layout-copilot .query-model-label {

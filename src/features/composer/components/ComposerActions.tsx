@@ -6,7 +6,7 @@ import React, {
   useState,
 } from "react";
 import { ControlsForm } from "@/features/composer/components/ControlsForm";
-import { AddMenuTrigger } from "@/features/composer/components/ComposerAddMenu";
+import { AddMenuTrigger, type AddMenuTriggerProps } from "@/features/composer/components/ComposerAddMenu";
 import { QuerySettingsControls } from "@/features/composer/components/QuerySettingsControls";
 import { useComposerContext } from "@/features/composer/components/ComposerContext";
 import type { ComposerContextReferenceInput } from "@/features/composer/lib/composerAttachments";
@@ -42,7 +42,7 @@ const SEND_BUTTON_CLASS =
 const INTERRUPT_BUTTON_CLASS =
   "interrupt-btn tw:!h-8 tw:!min-h-8 tw:!w-8 tw:!min-w-8 tw:!flex-none tw:self-center tw:!rounded-lg tw:!border-0 tw:!p-0 tw:!text-[11px] tw:!font-bold tw:hover:!bg-[color-mix(in_srgb,var(--accent-danger)_10%,transparent)] tw:disabled:opacity-60";
 
-interface ComposerActionsProps {
+interface ComposerActionsProps extends Omit<AddMenuTriggerProps, "disabled" | "loading" | "planningMode" | "editingMode" | "canUsePlanningMode" | "canUseEditingMode" | "currentChatId" | "onOpenFilePicker" | "onAddReference" | "onTogglePlanningMode" | "onEditingModeChange"> {
   accessLevel: QueryAccessLevel;
   isFrontendActive: boolean;
   isVoiceMode: boolean;
@@ -67,7 +67,6 @@ interface ComposerActionsProps {
   onTogglePlanningMode: () => void;
   onEditingModeChange: (enabled: boolean) => void;
   onAddReference: (reference: ComposerContextReferenceInput) => void;
-  onAddMenuClick?: () => void;
 }
 
 export const ComposerActions: React.FC<ComposerActionsProps> = ({
@@ -95,7 +94,13 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
   onTogglePlanningMode,
   onEditingModeChange,
   onAddReference,
-  onAddMenuClick,
+  currentAgentKey,
+  isMainChatRunning,
+  selectedSkillKeys,
+  slashCommands,
+  slashAvailability,
+  onSelectSkill,
+  onSelectCommand,
 }) => {
   const { t } = useI18n();
   const {
@@ -157,7 +162,22 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
           <AddMenuTrigger
             disabled={addMenuDisabled}
             loading={hasUploadingAttachments}
-            onClick={() => onAddMenuClick?.()}
+            currentChatId={currentChatId}
+            currentAgentKey={currentAgentKey}
+            planningMode={planningMode}
+            editingMode={editingMode}
+            canUsePlanningMode={canUsePlanningMode}
+            canUseEditingMode={canUseEditingMode}
+            isMainChatRunning={isMainChatRunning}
+            selectedSkillKeys={selectedSkillKeys}
+            slashCommands={slashCommands}
+            slashAvailability={slashAvailability}
+            onOpenFilePicker={openFilePicker}
+            onAddReference={onAddReference}
+            onTogglePlanningMode={onTogglePlanningMode}
+            onEditingModeChange={onEditingModeChange}
+            onSelectSkill={onSelectSkill}
+            onSelectCommand={onSelectCommand}
           />
           {canCaptureDesktopScreenshot ? (
             <UiButton
