@@ -18,7 +18,6 @@ import { AwaitingShell } from "@/features/composer/components/AwaitingShell";
 import { MentionSuggest } from "@/features/composer/components/MentionSuggest";
 import { ComposerPopover } from "@/features/composer/components/ComposerPopover";
 import { SlashPaletteContent } from "@/features/composer/components/SlashPalette";
-import { useAddMenuPanel } from "@/features/composer/hooks/useAddMenuPanel";
 import { SteerBar } from "@/features/composer/components/SteerBar";
 import {
   ComposerProvider,
@@ -36,7 +35,6 @@ import {
 import type { ComposerRequiredSkill } from "@/features/composer/lib/composerAttachments";
 import {
   getLatestQueryText,
-  type ResolvedSlashSkillDefinition,
   type SlashPaletteItem,
 } from "@/features/composer/lib/slashCommands";
 import { useSpeechInput } from "@/features/composer/components/useSpeechInput";
@@ -49,13 +47,16 @@ import { useComposerMention } from "@/features/composer/hooks/useComposerMention
 import { useRuntimeAccessLevel } from "@/features/composer/hooks/useRuntimeAccessLevel";
 import { useComposerSend } from "@/features/composer/hooks/useComposerSend";
 import { useComposerSlash } from "@/features/composer/hooks/useComposerSlash";
-import { useComposerHash } from "@/features/composer/hooks/useComposerHash";
 import { useComposerWonders } from "@/features/composer/hooks/useComposerWonders";
 import { useCommandOverlayOpen } from "@/features/workers/components/CommandOverlayProvider";
 import { useGlobalSearchOpen } from "@/features/search/components/GlobalSearchOverlayProvider";
 import { useOpenTarget } from "@/features/surfaces/openTarget";
 import { isVoiceEnabled } from "@/shared/config/featureFlags";
-import type { QueryAccessLevel, QueryModelOverride } from "@/shared/data";
+import type {
+  AgentSkill,
+  QueryAccessLevel,
+  QueryModelOverride,
+} from "@/shared/data";
 import { useI18n } from "@/shared/i18n";
 import { resolveMainChatRuntime } from "@/features/runs/lib/runRuntimeState";
 import { UiButton } from "@/shared/ui/UiButton";
@@ -282,8 +283,6 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     state,
   });
 
-  const [addMenuClickOpen, setAddMenuClickOpen] = useState(false);
-
   const {
     activeSlashIndex,
     refetchSlashSkills,
@@ -311,20 +310,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     canUsePlanningMode: planningModeAvailable,
     canUseEditingMode: editingModeAvailable,
     currentAgentKey,
-    addMenuOpen: addMenuClickOpen,
-  });
-
-  const { showAddMenu, setHashDismissed, hashPaletteRef } = useComposerHash({
-    composerPillRef,
-    composerRef,
-    inputValue,
-    isAwaitingActive,
-    isFrontendActive,
-    isVoiceMode,
-    commandOverlayOpen: isAnyOverlayOpen,
-    showSlashPalette,
-    addMenuClickOpen,
-    onDismissClickOpen: () => setAddMenuClickOpen(false),
+    addMenuOpen: false,
   });
 
   const { closeMention, selectMentionByIndex, updateMentionSuggestions } =
@@ -337,7 +323,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     });
 
   const handleSelectSlashSkill = useCallback(
-    (skill: ResolvedSlashSkillDefinition) => {
+    (skill: AgentSkill) => {
       if (isMainChatRunning) {
         return;
       }
@@ -354,7 +340,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
             (item) => item.key.trim().toLowerCase() !== identity,
           );
         }
-        return [...current, { key: skill.key, label: skill.label }];
+        return [...current, { key: skill.key, label: skill.name || skill.key }];
       });
       setInputValue((current) => current.slice(0, filterStartIndex - 1));
       setSlashDismissed(true);
@@ -671,29 +657,6 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     textareaRef,
   });
 
-  // 注意：useAddMenuPanel 必须在组件顶层调用（不能放在 JSX panels 数组内），
-  // 否则 awaiting 激活时的 early return 会导致 hooks 数量不一致。
-  const addMenuPanel = useAddMenuPanel({
-    open: !isAwaitingActive && (showAddMenu || addMenuClickOpen),
-    inputValue,
-    setInputValue,
-    currentChatId: state.chatId,
-    currentAgentKey,
-    hashPaletteRef,
-    planningMode: state.planningMode,
-    editingMode: state.editingMode,
-    canUsePlanningMode: planningModeAvailable,
-    canUseEditingMode: editingModeAvailable,
-    onOpenFilePicker: openFilePicker,
-    onAddReference: addContextReference,
-    onTogglePlanningMode: togglePlanningMode,
-    onEditingModeChange: handleEditingModeChange,
-    onClose: () => {
-      setHashDismissed(true);
-      setAddMenuClickOpen(false);
-    },
-  });
-
   const composerContextValue = useMemo<ComposerContextValue>(
     () => ({
       inputValue,
@@ -839,7 +802,6 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
                   />
                 ),
               },
-              addMenuPanel,
             ]}
           >
             <div className={COMPOSER_STACK_CLASS}>
@@ -921,7 +883,6 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
                   onInputChange={(next) => {
                     setInputValue(next);
                     setSlashDismissed(false);
-                    setHashDismissed(false);
                     if (
                       slashItems.length > 0 ||
                       next.startsWith("/") ||
@@ -970,7 +931,13 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
                   onTogglePlanningMode={togglePlanningMode}
                   onEditingModeChange={handleEditingModeChange}
                   onAddReference={addContextReference}
-                  onAddMenuClick={() => setAddMenuClickOpen((prev) => !prev)}
+                  currentAgentKey={currentAgentKey}
+                  isMainChatRunning={isMainChatRunning}
+                  selectedSkillKeys={effectiveSkills.map((skill) => skill.key)}
+                  slashCommands={slashCommands}
+                  slashAvailability={slashAvailability}
+                  onSelectSkill={handleSelectSlashSkill}
+                  onSelectCommand={(commandId) => void executeSlashCommand(commandId)}
                 />
                 {showSpeechHint && (
                   <div className={VOICE_HINT_CLASS}>{speechStatus}</div>

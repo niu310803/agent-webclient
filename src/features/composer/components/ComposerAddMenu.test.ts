@@ -10,6 +10,8 @@ jest.mock("@/shared/ui/UiButton", () => ({
   UiButton: ({
     children,
     "aria-label": ariaLabel,
+    iconOnly: _iconOnly,
+    loading: _loading,
     ...rest
   }: Record<string, unknown>) =>
     React.createElement(
