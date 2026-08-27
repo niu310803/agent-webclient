@@ -10,7 +10,11 @@ import {
   type ResourceViewerTarget,
   type ViewerTarget,
 } from "@/features/viewers/lib/viewerTarget";
-import type { WorkPanelItemDescriptor } from "@/features/transport/contracts/generated/agentWebclientBridge";
+import type {
+  WorkPanelItemDescriptor,
+  WorkPanelOpenResourceInput,
+  WorkPanelOpenResourceResult,
+} from "@/features/transport/contracts/generated/agentWebclientBridge";
 import { useOptionalWorkPanelTransport } from "@/features/transport/components/RealtimeTransportProvider";
 import { isDesktopAppMode } from "@/shared/utils/routing";
 import {
@@ -406,7 +410,79 @@ export function buildDesktopWorkPanelDescriptor(
 
 type DesktopWorkPanelTargetOpener = {
   openDescriptor(descriptor: WorkPanelItemDescriptor): Promise<unknown>;
+  supportsNativeResource?: () => boolean;
+  openNativeResource?: (
+    input: Omit<WorkPanelOpenResourceInput, "version">,
+  ) => Promise<WorkPanelOpenResourceResult | null>;
 };
+
+function decodeNativeResourceRelativePath(
+  value: unknown,
+  profile: "artifact" | "reference",
+): string {
+  const source = clean(value);
+  if (!source || source.length > 2_048 || source.startsWith("/") || source.includes("\\")) return "";
+  const rawSegments = source.split("/");
+  const segments: string[] = [];
+  for (const rawSegment of rawSegments) {
+    if (!rawSegment) return "";
+    let segment = "";
+    try {
+      segment = decodeURIComponent(rawSegment);
+    } catch {
+      return "";
+    }
+    if (
+      !segment || segment === "." || segment === ".." ||
+      segment.includes("/") || segment.includes("\\") ||
+      /[\u0000-\u001f\u007f]/u.test(segment)
+    ) return "";
+    let probe = segment;
+    for (let depth = 0; depth < 4; depth += 1) {
+      try {
+        const next = decodeURIComponent(probe);
+        if (next === "." || next === ".." || next.includes("/") || next.includes("\\")) return "";
+        if (next === probe) break;
+        probe = next;
+      } catch {
+        break;
+      }
+    }
+    segments.push(segment);
+  }
+  const expectedRoot = profile === "artifact" ? "artifacts" : "references";
+  return segments.length >= 2 && segments[0] === expectedRoot ? segments.join("/") : "";
+}
+
+export function buildDesktopNativeResourceRequest(
+  intent: OpenTargetIntent,
+): Omit<WorkPanelOpenResourceInput, "version"> | null {
+  if (intent.kind !== "artifact" && intent.kind !== "reference") return null;
+  const profile = intent.kind;
+  const agentKey = clean(intent.agentKey);
+  const chatId = clean(intent.chatId);
+  const resourceId = clean(intent.kind === "artifact" ? intent.artifactId : intent.referenceId);
+  const resourceTarget = intent.resourceTarget;
+  if (!agentKey || !chatId || !resourceId || !resourceTarget) return null;
+  const classification = classifyResourceUrl(resourceTarget.url, chatId);
+  if (classification.kind !== "chat" || !classification.resourceKey) return null;
+  const relativePath = decodeNativeResourceRelativePath(classification.resourceKey, profile);
+  if (!relativePath) return null;
+  return {
+    profile,
+    agentKey,
+    chatId,
+    resourceId,
+    relativePath,
+    ...(clean(intent.title || resourceTarget.name)
+      ? { title: clean(intent.title || resourceTarget.name) }
+      : {}),
+  };
+}
+
+function bridgeFailureMessage(result: WorkPanelOpenResourceResult): string {
+  return result.ok ? "" : result.error.message;
+}
 
 export function openDesktopWorkPanelTarget(input: {
   intent: OpenTargetIntent;
@@ -425,7 +501,34 @@ export function openDesktopWorkPanelTarget(input: {
     input.onError?.(`[workpanel] invalid or unsupported ${input.intent.kind} target`);
     return false;
   }
-  void input.workPanel.openDescriptor(descriptor).catch((error) => {
+  const nativeCandidate = input.intent.kind === "artifact" || input.intent.kind === "reference";
+  // DesktopWorkPanelTransport implements this as a class method and reads `this`.
+  // Keep its receiver when handing the operation into the async native/fallback flow.
+  const openNativeResource = input.workPanel.openNativeResource?.bind(input.workPanel);
+  if (
+    !nativeCandidate ||
+    input.workPanel.supportsNativeResource?.() !== true ||
+    typeof openNativeResource !== "function"
+  ) {
+    void input.workPanel.openDescriptor(descriptor).catch((error) => {
+      input.onError?.(`[workpanel] ${error instanceof Error ? error.message : String(error)}`);
+    });
+    return true;
+  }
+
+  const nativeRequest = buildDesktopNativeResourceRequest(input.intent);
+  if (!nativeRequest) {
+    input.onError?.(`[workpanel] invalid native ${input.intent.kind} resource target`);
+    return true;
+  }
+  void openNativeResource(nativeRequest).then(async (result) => {
+    if (result?.ok) return;
+    if (result === null || result.error.code === "unsupported_native_type") {
+      await input.workPanel?.openDescriptor(descriptor);
+      return;
+    }
+    input.onError?.(`[workpanel] ${bridgeFailureMessage(result)}`);
+  }).catch((error) => {
     input.onError?.(`[workpanel] ${error instanceof Error ? error.message : String(error)}`);
   });
   return true;

@@ -36,6 +36,12 @@ export function isDesktopWorkPanelBridge(
   return hasMethods(value, ["getCapabilities", "openItem", "activateItem", "closeItem"]);
 }
 
+export function supportsDesktopNativeResource(
+  value: AgentWebclientWorkPanelBridge | null | undefined,
+): value is AgentWebclientWorkPanelBridge {
+  return Boolean(value) && typeof (value as { openResource?: unknown }).openResource === "function";
+}
+
 export function readDesktopBridges(): {
   platformFramePort: DesktopPlatformFramePort | null;
   workPanel: AgentWebclientWorkPanelBridge | null;

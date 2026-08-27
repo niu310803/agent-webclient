@@ -1,7 +1,7 @@
 # Desktop宿主桥接
 
 ## 当前状态
-WebClient 已消费 canonical generated Desktop contract，通过固定只读全局 `__AGENT_WEBCLIENT_PLATFORM_FRAME_PORT__` 与 `__AGENT_WEBCLIENT_WORKPANEL_BRIDGE__` 接入 Main Broker 和 WorkPanel。Frame Port transport version 固定为 2；现有 Desktop context、截图、文件系统和右键桥接继续服务各自能力，但不作为 realtime fallback。
+WebClient 已消费 v5 canonical generated Desktop contract，通过固定只读全局 `__AGENT_WEBCLIENT_PLATFORM_FRAME_PORT__` 与 `__AGENT_WEBCLIENT_WORKPANEL_BRIDGE__` 接入 Main Broker 和 WorkPanel。Frame Port transport version 固定为 2；现有 Desktop context、截图、文件系统和右键桥接继续服务各自能力，但不作为 realtime fallback。
 
 ## 核心职责
 - 严格判断 `DESKTOP_APP`：只接受布尔 `true` 或精确字符串 `"true"`。
@@ -12,7 +12,11 @@ WebClient 已消费 canonical generated Desktop contract，通过固定只读全
 - 在 query payload 中补充宿主提供的上下文。
 
 ## 核心流程
-Provider 仅在 Desktop Frame Port 结构和 transport version 有效时渲染页面。surface/capability denial 作为相同 request id 的标准 Platform error 留在具体操作中。`DesktopFramePortDriver` 把 Session 的结构化 frame/state/close 交给共享 `PlatformFrameClient`，不依赖 `WsClient`、socket factory 或字符串消息；WorkPanel 保持独立 `getCapabilities()` 宿主查询和逐请求授权，只接收 canonical descriptor，失败时不调用 `window.open` 或旧 Action。
+Provider 仅在 Desktop Frame Port 结构和 transport version 有效时渲染页面。surface/capability denial 作为相同 request id 的标准 Platform error 留在具体操作中。`DesktopFramePortDriver` 把 Session 的结构化 frame/state/close 交给共享 `PlatformFrameClient`，不依赖 `WsClient`、socket factory 或字符串消息；WorkPanel 保持独立 `getCapabilities()` 宿主查询和逐请求授权。普通 Surface 继续只接收 canonical descriptor；Artifact/Reference 额外使用语义化 `openResource`，且成功结果只包含 `workspaceId + itemId + renderer:native-image`，不接收 handle、绝对路径或内部 descriptor。
+
+`openResource` 只针对 ChatScope `artifacts/...` 与 `references/...`。WebClient 逐段解码规范 URI 后提交相对路径，并拒绝绝对路径、控制字符、错误前缀、单/双重编码 traversal。宿主以真实 sender 的 owner Chat 重新校验。只有稳定错误 `unsupported_native_type` 允许 WebClient 再调用 `openItem`；`capability_denied`、`target_unavailable`、`invalid_request` 等都停留在原错误，不创建 Resource Viewer。旧 bridge 没有 `openResource` 方法时保留 v4 Viewer 行为，Standalone 不进入该分支。
+
+Resource Viewer 内的 Office/未知文档本地操作走独立的 Service WebView 消息：请求包含 `requestId`、`reveal | open-default`、`chatId`、profile 和受限相对路径，不携带本地绝对路径。Desktop Main Chat Surface 以当前 owner Chat 校验请求，WorkPanel Surface 还要求请求与当前可信 Artifact/Reference descriptor 完全一致，再通过类型化 preload/IPC 调用 Main；响应只返回 `ok`、稳定错误码和安全提示。该能力不修改 Agent WebClient Bridge 版本，也不新增 Agent Platform HTTP 接口。
 
 Bridge 全局可见早于 Desktop surface 完成登记属于允许的启动窗口，由 Desktop 在 Frame Port open 层限时收敛；WebClient 不通过 `/api/agents` 预热或业务请求重试规避该窗口。逻辑 Session 生命周期与宿主物理 WebSocket generation 分离；`connecting/connected/reconnecting/closed` 由宿主权威投影，WebClient 不从 guest token 或本地 timer 推断。永久 close 的稳定 reason/error 保留到 UI 与诊断，且不得触发 HTTP fallback。
 

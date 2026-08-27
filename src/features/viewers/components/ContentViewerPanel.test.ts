@@ -1,5 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import fs from "node:fs";
+import path from "node:path";
 
 jest.mock("@/app/state/AppContext", () => ({
 	useAppState: () => ({ chatId: "chat_1", chats: [] }),
@@ -13,12 +15,26 @@ jest.mock("@/shared/ui/useAuthenticatedResourceUrl", () => ({
 	}),
 }));
 
+jest.mock("@/shared/data/desktop/desktopCurrentResourceAction", () => ({
+	canUseDesktopCurrentResourceActions: () => true,
+	checkDesktopCurrentResourceActionsAvailable: () => Promise.resolve(true),
+	detectDesktopFileManager: () => "finder",
+	requestDesktopCurrentResourceAction: jest.fn(),
+	resolveDesktopCurrentResourceIdentity: () => ({
+		chatId: "chat_1",
+		profile: "artifact",
+		relativePath: "artifacts/run_1/report.docx",
+	}),
+}));
+
 import {
 	ContentViewerPanel,
+	DesktopLocalResourceActions,
 	buildViewerTextLines,
 	resolveContentViewerErrorMessage,
 	resolveFileViewerContentKind,
 	resolveFileViewerHtml,
+	shouldRequestDesktopLocalResourceActions,
 } from "@/features/viewers/components/ContentViewerPanel";
 
 describe("ContentViewerPanel", () => {
@@ -37,6 +53,69 @@ describe("ContentViewerPanel", () => {
 
 		expect(html).not.toContain("<button");
 		expect(html).not.toContain("content-viewer-body");
+	});
+
+	it("renders the Desktop local action controls inside the viewer content area", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(DesktopLocalResourceActions, {
+				resource: {
+					chatId: "chat_1",
+					profile: "artifact",
+					relativePath: "artifacts/run_1/report.docx",
+				},
+			}),
+		);
+
+		expect(html).toContain("content-viewer-local-actions");
+		expect(html).toContain("在访达中显示");
+		expect(html).toContain("用默认应用打开");
+	});
+
+	it.each(["office", "unsupported"] as const)(
+		"requests Desktop local action capability for %s resources",
+		(contentKind) => {
+			expect(shouldRequestDesktopLocalResourceActions({
+				bridgeAvailable: true,
+				contentKind,
+				enabled: true,
+				identityAvailable: true,
+				targetType: "resource",
+			})).toBe(true);
+		},
+	);
+
+	it("does not render local actions for previewable resources", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(ContentViewerPanel, {
+				target: {
+					type: "resource",
+					name: "manual.pdf",
+					url: "artifacts/run_1/manual.pdf",
+					downloadUrl: "artifacts/run_1/manual.pdf",
+					contentKind: "pdf",
+				},
+				enableDesktopLocalResourceActions: true,
+			}),
+		);
+
+		expect(html).not.toContain("content-viewer-local-actions");
+		expect(shouldRequestDesktopLocalResourceActions({
+			bridgeAvailable: true,
+			contentKind: "pdf",
+			enabled: true,
+			identityAvailable: true,
+			targetType: "resource",
+		})).toBe(false);
+	});
+
+	it("enables local document actions in the Main Chat RightSidebar", () => {
+		const source = fs.readFileSync(
+			path.join(process.cwd(), "src/app/layout/sidebar/right/RightSidebar.tsx"),
+			"utf8",
+		);
+		expect(source).toMatch(
+			/<ContentViewerPanel[\s\S]*?target=\{target\}[\s\S]*?enableDesktopLocalResourceActions/,
+		);
 	});
 
 	it("marks the requested line as the target line", () => {

@@ -660,6 +660,12 @@ export const enUSMessages = {
   "contentViewer.error.audio": "Audio preview failed. Download the file to view it.",
   "contentViewer.error.download": "Resource download failed",
   "contentViewer.action.download": "Download",
+  "contentViewer.desktopAction.groupLabel": "Local document actions",
+  "contentViewer.desktopAction.revealInFinder": "Show in Finder",
+  "contentViewer.desktopAction.revealInExplorer": "Show in File Explorer",
+  "contentViewer.desktopAction.revealInFileManager": "Show in File Manager",
+  "contentViewer.desktopAction.openDefault": "Open with Default App",
+  "contentViewer.desktopAction.failed": "The current document could not be opened. Try again.",
   "contentViewer.error.image": "Image preview failed. Download the file to view it.",
   "contentViewer.error.loadText": "Viewer failed to load",
   "contentViewer.error.video": "Video preview failed. Download the file to view it.",
@@ -1784,5 +1790,6 @@ export const enUSMessages = {
   "display.error.invalidKind": "kind must be effect",
   "display.error.invalidEffect": "effect must be fireworks, snowfall, or nationalDay",
   "display.error.invalidDuration": "durationMs must be an integer from {min} to {max}",
+  "workPanel.error.openDenied": "The current Desktop surface cannot open WorkPanel items",
 
 } satisfies I18nMessages;

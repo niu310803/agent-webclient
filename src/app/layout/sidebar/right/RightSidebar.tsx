@@ -447,6 +447,7 @@ export const RightSidebar: React.FC = () => {
         children: (
           <ContentViewerPanel
             target={target}
+            enableDesktopLocalResourceActions
             fullscreenRequest={
               tabFullscreenRequests[`viewer:${viewerKey}`] ?? 0
             }

@@ -32,6 +32,7 @@ describe("RealtimeTransportProvider", () => {
     };
     const workPanel: AgentWebclientWorkPanelBridge = {
       getCapabilities: jest.fn(async () => ({ ok: true, capabilities: ["workpanel.open"] })),
+      openResource: jest.fn(),
       openItem: jest.fn(),
       activateItem: jest.fn(),
       closeItem: jest.fn(),

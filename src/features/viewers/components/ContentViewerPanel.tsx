@@ -15,15 +15,24 @@ import {
   type ViewerTarget,
 } from "@/features/viewers/lib/viewerTarget";
 import { t } from "@/shared/i18n";
-import { Image, message } from "antd";
+import { Button, Image, message } from "antd";
 import { useAppState } from "@/app/state/AppContext";
 import { useAuthenticatedResourceUrl } from "@/shared/ui/useAuthenticatedResourceUrl";
 import {
   useDesktopContextMenuTarget,
   useDesktopCurrentResourceDownload,
 } from "@/shared/data/desktop/desktopContextMenu";
-import { useDesktopImagePreviewReview } from "@/features/viewers/hooks/useDesktopImagePreviewReview";
 import { useDesktopHtmlPreviewReview } from "@/features/viewers/hooks/useDesktopHtmlPreviewReview";
+import { MaterialIcon } from "@/shared/ui/MaterialIcon";
+import {
+  canUseDesktopCurrentResourceActions,
+  checkDesktopCurrentResourceActionsAvailable,
+  detectDesktopFileManager,
+  requestDesktopCurrentResourceAction,
+  resolveDesktopCurrentResourceIdentity,
+  type DesktopCurrentResourceAction,
+  type DesktopCurrentResourceIdentity,
+} from "@/shared/data/desktop/desktopCurrentResourceAction";
 
 const CONTENT_VIEWER_PANEL_CLASS_NAME =
   "content-viewer-panel tw:flex tw:h-full tw:flex-col";
@@ -66,11 +75,21 @@ const CONTENT_VIEWER_AUDIO_CLASS_NAME =
 const CONTENT_VIEWER_NOTE_CLASS_NAME =
   "content-viewer-note tw:px-3 tw:pb-3 tw:pt-0 tw:text-[11px] tw:leading-[1.5] tw:text-ink-muted";
 
+const CONTENT_VIEWER_LOCAL_ACTIONS_CLASS_NAME =
+  "content-viewer-local-actions tw:flex tw:min-h-0 tw:flex-1 tw:items-center tw:justify-center tw:p-6";
+
+const CONTENT_VIEWER_LOCAL_ACTIONS_GROUP_CLASS_NAME =
+  "content-viewer-local-actions-group tw:flex tw:w-full tw:max-w-[240px] tw:flex-col tw:gap-3";
+
+const CONTENT_VIEWER_LOCAL_ACTION_ERROR_CLASS_NAME =
+  "content-viewer-local-action-error tw:rounded-lg tw:bg-[color-mix(in_srgb,#ff4d4f_10%,transparent)] tw:px-3 tw:py-2 tw:text-center tw:text-xs tw:leading-[1.5] tw:text-[#cf1322]";
+
 interface ContentViewerPanelProps {
   target: ViewerTarget;
   showLineNumbers?: boolean;
   fullscreenRequest?: number;
   enableDesktopCurrentResourceDownload?: boolean;
+  enableDesktopLocalResourceActions?: boolean;
   enableDesktopPreviewReview?: boolean;
   surfaceContext?: {
     chatId: string;
@@ -143,11 +162,99 @@ export function resolveContentViewerErrorMessage(
   return error instanceof Error ? error.message : fallback;
 }
 
+export function shouldRequestDesktopLocalResourceActions(input: {
+  bridgeAvailable: boolean;
+  contentKind: ViewerContentKind;
+  enabled: boolean;
+  identityAvailable: boolean;
+  targetType: ViewerTarget["type"];
+}): boolean {
+  return input.enabled &&
+    input.bridgeAvailable &&
+    input.identityAvailable &&
+    input.targetType === "resource" &&
+    (input.contentKind === "office" || input.contentKind === "unsupported");
+}
+
+export const DesktopLocalResourceActions: React.FC<{
+  resource: DesktopCurrentResourceIdentity;
+}> = ({ resource }) => {
+  const [pendingAction, setPendingAction] =
+    React.useState<DesktopCurrentResourceAction | null>(null);
+  const [actionError, setActionError] = React.useState("");
+  const fileManager = detectDesktopFileManager();
+  const revealLabel = t(
+    fileManager === "finder"
+      ? "contentViewer.desktopAction.revealInFinder"
+      : fileManager === "explorer"
+        ? "contentViewer.desktopAction.revealInExplorer"
+        : "contentViewer.desktopAction.revealInFileManager",
+  );
+  const handleAction = React.useCallback(async (
+    action: DesktopCurrentResourceAction,
+  ) => {
+    if (pendingAction) return;
+    setPendingAction(action);
+    setActionError("");
+    try {
+      const result = await requestDesktopCurrentResourceAction(action, resource);
+      if (!result.ok) {
+        setActionError(
+          result.message || t("contentViewer.desktopAction.failed"),
+        );
+      }
+    } catch {
+      setActionError(t("contentViewer.desktopAction.failed"));
+    } finally {
+      setPendingAction(null);
+    }
+  }, [pendingAction, resource]);
+
+  return (
+    <div className={CONTENT_VIEWER_LOCAL_ACTIONS_CLASS_NAME}>
+      <div
+        className={CONTENT_VIEWER_LOCAL_ACTIONS_GROUP_CLASS_NAME}
+        role="group"
+        aria-label={t("contentViewer.desktopAction.groupLabel")}
+      >
+        <Button
+          block
+          disabled={pendingAction !== null}
+          icon={<MaterialIcon name="folder_open" />}
+          loading={pendingAction !== null}
+          onClick={() => void handleAction("reveal")}
+        >
+          {revealLabel}
+        </Button>
+        <Button
+          block
+          type="primary"
+          disabled={pendingAction !== null}
+          icon={<MaterialIcon name="open_in_new" />}
+          loading={pendingAction !== null}
+          onClick={() => void handleAction("open-default")}
+        >
+          {t("contentViewer.desktopAction.openDefault")}
+        </Button>
+        {actionError ? (
+          <div
+            className={CONTENT_VIEWER_LOCAL_ACTION_ERROR_CLASS_NAME}
+            role="alert"
+          >
+            {actionError}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
 export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   target,
   showLineNumbers = false,
   fullscreenRequest,
   enableDesktopCurrentResourceDownload = false,
+  enableDesktopLocalResourceActions = false,
   enableDesktopPreviewReview = false,
   surfaceContext,
 }) => {
@@ -166,9 +273,10 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   const [textLoading, setTextLoading] = React.useState(false);
   const [textError, setTextError] = React.useState("");
   const [mediaError, setMediaError] = React.useState("");
+  const [desktopLocalActionsAvailable, setDesktopLocalActionsAvailable] =
+    React.useState(false);
   const textContainerRef = React.useRef<HTMLPreElement | null>(null);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
-  const imageReviewHostRef = React.useRef<HTMLDivElement | null>(null);
   const contextTargetId = React.useId();
   const fileRequest = React.useMemo(
     () => target.type === "file"
@@ -195,12 +303,6 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   const authenticatedResource = useAuthenticatedResourceUrl(mediaSource, chatId, { teamChat });
   const mediaUrl = authenticatedResource.url;
   const viewerName = workspaceFileResponse?.name || target.name;
-  useDesktopImagePreviewReview({
-    enabled: enableDesktopPreviewReview && contentKind === "image" && Boolean(mediaUrl),
-    fileName: viewerName,
-    sourceKey: JSON.stringify(target),
-    imageHostRef: imageReviewHostRef,
-  });
   const fileHtml = resolveFileViewerHtml(
     workspaceFileResponse,
   );
@@ -375,12 +477,48 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
     [targetLine, textContent],
   );
   const viewable = isViewerContentSupported(contentKind);
+  const desktopLocalResourceIdentity = target.type === "resource"
+    ? resolveDesktopCurrentResourceIdentity(chatId, target.url)
+    : null;
+  const localActionsCandidate = shouldRequestDesktopLocalResourceActions({
+    bridgeAvailable: canUseDesktopCurrentResourceActions(),
+    contentKind,
+    enabled: enableDesktopLocalResourceActions,
+    identityAvailable: desktopLocalResourceIdentity !== null,
+    targetType: target.type,
+  });
+  const localActionsSourceKey = desktopLocalResourceIdentity
+    ? `${desktopLocalResourceIdentity.chatId}\u0000${desktopLocalResourceIdentity.profile}\u0000${desktopLocalResourceIdentity.relativePath}`
+    : "";
+
+  React.useEffect(() => {
+    let disposed = false;
+    setDesktopLocalActionsAvailable(false);
+    if (!localActionsCandidate || !desktopLocalResourceIdentity) {
+      return () => {
+        disposed = true;
+      };
+    }
+    void checkDesktopCurrentResourceActionsAvailable(desktopLocalResourceIdentity)
+      .then((available) => {
+        if (!disposed) setDesktopLocalActionsAvailable(available);
+      })
+      .catch(() => {
+        if (!disposed) setDesktopLocalActionsAvailable(false);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [localActionsCandidate, localActionsSourceKey]);
 
   return (
     <div ref={setPanelElement} className={CONTENT_VIEWER_PANEL_CLASS_NAME}>
+      {localActionsCandidate && desktopLocalActionsAvailable && desktopLocalResourceIdentity
+        ? <DesktopLocalResourceActions resource={desktopLocalResourceIdentity} />
+        : null}
       {viewable ? <div className={CONTENT_VIEWER_BODY_CLASS_NAME}>
         {contentKind === "image" && mediaUrl ? (
-          <div ref={imageReviewHostRef} className="content-viewer-image-review-host tw:inline-block tw:max-w-full tw:self-start">
+          <div className="content-viewer-image-review-host tw:inline-block tw:max-w-full tw:self-start">
             <Image
               className="content-viewer-image"
               src={mediaUrl}

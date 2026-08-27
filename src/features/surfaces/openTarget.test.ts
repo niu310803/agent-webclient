@@ -1,4 +1,5 @@
 import {
+  buildDesktopNativeResourceRequest,
   buildDesktopWorkPanelDescriptor,
   buildStandaloneOpenTargetUrl,
   normalizeProjectRelativePath,
@@ -450,6 +451,180 @@ describe("canonical independent Surface targets", () => {
       module: kind,
       route: expect.stringMatching(/^\/resource-viewer\/agent-1\?/),
     }));
+  });
+
+  it("builds a minimal native image request from a canonical encoded Artifact path", () => {
+    expect(buildDesktopNativeResourceRequest({
+      version: 1,
+      kind: "artifact",
+      agentKey: "agent-1",
+      chatId: "chat-1",
+      artifactId: "artifact-1",
+      resourceTarget: {
+        type: "resource",
+        name: "夏日 海报.png",
+        url: "artifacts/run-1/%E5%A4%8F%E6%97%A5%20%E6%B5%B7%E6%8A%A5.png",
+        downloadUrl: "",
+        contentKind: "image",
+      },
+    })).toEqual({
+      profile: "artifact",
+      agentKey: "agent-1",
+      chatId: "chat-1",
+      resourceId: "artifact-1",
+      relativePath: "artifacts/run-1/夏日 海报.png",
+      title: "夏日 海报.png",
+    });
+    expect(buildDesktopNativeResourceRequest({
+      version: 1,
+      kind: "artifact",
+      agentKey: "agent-1",
+      chatId: "chat-1",
+      artifactId: "artifact-1",
+      resourceTarget: {
+        type: "resource",
+        name: "unsafe.png",
+        url: "artifacts/%252e%252e/unsafe.png",
+        downloadUrl: "",
+        contentKind: "image",
+      },
+    })).toBeNull();
+  });
+
+  it("uses native images and falls back only for unsupported native types", async () => {
+    const imageIntent = {
+      version: 1 as const,
+      kind: "artifact" as const,
+      agentKey: "agent-1",
+      chatId: "chat-1",
+      artifactId: "artifact-1",
+      resourceTarget: {
+        type: "resource" as const,
+        name: "image.png",
+        url: "artifacts/run-1/image.png",
+        downloadUrl: "",
+        contentKind: "image" as const,
+      },
+    };
+    const openDescriptor = jest.fn(async () => ({ ok: true }));
+    const openNativeResource = jest.fn(async () => ({
+      ok: true as const,
+      workspaceId: "workpanel:chat-1",
+      itemId: "native-image-1",
+      renderer: "native-image" as const,
+    }));
+    expect(openDesktopWorkPanelTarget({
+      intent: imageIntent,
+      workPanel: {
+        openDescriptor,
+        supportsNativeResource: () => true,
+        openNativeResource,
+      },
+    })).toBe(true);
+    await Promise.resolve();
+    expect(openNativeResource).toHaveBeenCalledWith(expect.objectContaining({
+      resourceId: "artifact-1",
+      relativePath: "artifacts/run-1/image.png",
+    }));
+    expect(openDescriptor).not.toHaveBeenCalled();
+
+    openNativeResource.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "unsupported_native_type", message: "not native" },
+    });
+    openDesktopWorkPanelTarget({
+      intent: imageIntent,
+      workPanel: {
+        openDescriptor,
+        supportsNativeResource: () => true,
+        openNativeResource,
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(openDescriptor).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the Desktop WorkPanel transport receiver when opening a native image", async () => {
+    const nativeOpen = jest.fn();
+    class ReceiverAwareWorkPanel {
+      readonly ready = true;
+
+      supportsNativeResource(): boolean {
+        return this.ready;
+      }
+
+      async openNativeResource(input: { resourceId: string }) {
+        if (!this.ready) throw new Error("missing WorkPanel receiver");
+        nativeOpen(input);
+        return {
+          ok: true as const,
+          workspaceId: "workpanel:chat-1",
+          itemId: "native-image-1",
+          renderer: "native-image" as const,
+        };
+      }
+
+      async openDescriptor() {
+        return { ok: true as const };
+      }
+    }
+
+    expect(openDesktopWorkPanelTarget({
+      intent: {
+        version: 1,
+        kind: "artifact",
+        agentKey: "agent-1",
+        chatId: "chat-1",
+        artifactId: "artifact-1",
+        resourceTarget: {
+          type: "resource",
+          name: "image.png",
+          url: "artifacts/run-1/image.png",
+          downloadUrl: "",
+          contentKind: "image",
+        },
+      },
+      workPanel: new ReceiverAwareWorkPanel(),
+    })).toBe(true);
+    await Promise.resolve();
+    expect(nativeOpen).toHaveBeenCalledWith(expect.objectContaining({
+      resourceId: "artifact-1",
+      relativePath: "artifacts/run-1/image.png",
+    }));
+  });
+
+  it("does not fall back after a native image authorization failure", async () => {
+    const openDescriptor = jest.fn(async () => ({ ok: true }));
+    const onError = jest.fn();
+    openDesktopWorkPanelTarget({
+      intent: {
+        version: 1,
+        kind: "reference",
+        agentKey: "agent-1",
+        chatId: "chat-1",
+        referenceId: "reference-1",
+        resourceTarget: {
+          type: "resource",
+          name: "image.webp",
+          url: "references/image.webp",
+          downloadUrl: "",
+          contentKind: "image",
+        },
+      },
+      workPanel: {
+        openDescriptor,
+        supportsNativeResource: () => true,
+        openNativeResource: jest.fn(async () => ({
+          ok: false,
+          error: { code: "capability_denied", message: "wrong owner" },
+        })),
+      },
+      onError,
+    });
+    await Promise.resolve();
+    expect(openDescriptor).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith("[workpanel] wrong owner");
   });
 
   it("normalizes project-relative file identities", () => {

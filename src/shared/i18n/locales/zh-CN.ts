@@ -660,6 +660,12 @@ export const zhCNMessages = {
   "contentViewer.error.audio": "音频加载失败，请下载查看。",
   "contentViewer.error.download": "资源下载失败",
   "contentViewer.action.download": "下载",
+  "contentViewer.desktopAction.groupLabel": "本地文档操作",
+  "contentViewer.desktopAction.revealInFinder": "在访达中显示",
+  "contentViewer.desktopAction.revealInExplorer": "在文件资源管理器中显示",
+  "contentViewer.desktopAction.revealInFileManager": "在文件管理器中显示",
+  "contentViewer.desktopAction.openDefault": "用默认应用打开",
+  "contentViewer.desktopAction.failed": "无法打开当前文档，请稍后重试。",
   "contentViewer.error.image": "图片加载失败，请下载查看。",
   "contentViewer.error.loadText": "Viewer 加载失败",
   "contentViewer.error.video": "视频加载失败，请下载查看。",
@@ -1783,5 +1789,6 @@ export const zhCNMessages = {
   "display.error.invalidKind": "kind 必须为 effect",
   "display.error.invalidEffect": "effect 必须为 fireworks、snowfall 或 nationalDay",
   "display.error.invalidDuration": "durationMs 必须是 {min} 到 {max} 之间的整数",
+  "workPanel.error.openDenied": "当前 Desktop 页面无法打开 WorkPanel 项目",
 
 } satisfies I18nMessages;
