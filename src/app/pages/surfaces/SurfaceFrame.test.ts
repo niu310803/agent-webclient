@@ -23,4 +23,16 @@ describe("IndependentSurfaceFrame", () => {
     );
     expect(withoutRetry).not.toContain("<button");
   });
+
+  it("can render edge-to-edge viewer content", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(IndependentSurfaceFrame, {
+        kind: "resource",
+        flushContent: true,
+        children: React.createElement("iframe", { title: "artifact" }),
+      }),
+    );
+
+    expect(html).toContain('class="readonly-run-surface-content is-flush"');
+  });
 });

@@ -35,6 +35,7 @@ export const ResourceViewerPage: React.FC = () => {
     <IndependentSurfaceFrame
       kind="resource"
       error={target ? "" : t("platformError.code.invalid_request")}
+      flushContent={target?.contentKind === "html"}
     >
       {target ? (
         <ContentViewerPanel

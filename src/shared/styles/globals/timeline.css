@@ -1154,6 +1154,10 @@ html[data-theme="dark"] .worker-chat-float-btn:hover {
     padding: 12px;
 }
 
+.readonly-run-surface-content.is-flush {
+    padding: 0;
+}
+
 .readonly-run-surface-error {
     display: flex;
     align-items: center;

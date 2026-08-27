@@ -23,6 +23,7 @@ import {
   useDesktopCurrentResourceDownload,
 } from "@/shared/data/desktop/desktopContextMenu";
 import { useDesktopImagePreviewReview } from "@/features/viewers/hooks/useDesktopImagePreviewReview";
+import { useDesktopHtmlPreviewReview } from "@/features/viewers/hooks/useDesktopHtmlPreviewReview";
 
 const CONTENT_VIEWER_PANEL_CLASS_NAME =
   "content-viewer-panel tw:flex tw:h-full tw:flex-col";
@@ -160,6 +161,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   const [workspaceFile, setWorkspaceFile] =
     React.useState<AgentFileResponse | null>(null);
   const [textContent, setTextContent] = React.useState("");
+  const [resourceHtmlContent, setResourceHtmlContent] = React.useState<string | null>(null);
   const [textTruncated, setTextTruncated] = React.useState(false);
   const [textLoading, setTextLoading] = React.useState(false);
   const [textError, setTextError] = React.useState("");
@@ -202,6 +204,14 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   const fileHtml = resolveFileViewerHtml(
     workspaceFileResponse,
   );
+  const viewerHtml = fileRequest ? fileHtml : resourceHtmlContent;
+  const htmlReview = useDesktopHtmlPreviewReview({
+    enabled: enableDesktopPreviewReview && contentKind === "html" && viewerHtml !== null,
+    fileName: viewerName,
+    sourceKey: JSON.stringify(target),
+    html: viewerHtml,
+    baseUrl: viewerUrl,
+  });
   const handleDownload = React.useCallback(async () => {
     try {
       await downloadViewerTarget(target, {
@@ -246,6 +256,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
 
   React.useEffect(() => {
     setWorkspaceFile(null);
+    setResourceHtmlContent(null);
 
     if (fileRequest) {
       let disposed = false;
@@ -280,7 +291,10 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
       };
     }
 
-    if (target.type !== "resource" || target.contentKind !== "text") {
+    if (
+      target.type !== "resource" ||
+      (target.contentKind !== "text" && target.contentKind !== "html")
+    ) {
       setTextContent("");
       setTextTruncated(false);
       setTextLoading(false);
@@ -297,7 +311,11 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
     void readViewerResourceText(target.url, chatId, controller.signal, teamChat)
       .then((content) => {
         const limitedText = limitViewerText(content);
-        setTextContent(limitedText.content);
+        if (target.contentKind === "html") {
+          setResourceHtmlContent(limitedText.content);
+        } else {
+          setTextContent(limitedText.content);
+        }
         setTextTruncated(limitedText.truncated);
       })
       .catch((error: unknown) => {
@@ -381,38 +399,40 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
         ) : null}
 
         {contentKind === "html" ? (
-          fileRequest ? (
-            textLoading ? (
-              <div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>
-                {t("contentViewer.text.loading")}
-              </div>
-            ) : textError ? (
-              <div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>
-                {textError}
-              </div>
-            ) : workspaceFileResponse?.truncated ? (
-              <div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>
-                {t("contentViewer.text.truncated")}
-              </div>
-            ) : fileHtml !== null ? (
+          textLoading ? (
+            <div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>
+              {t("contentViewer.text.loading")}
+            </div>
+          ) : textError ? (
+            mediaUrl ? (
               <iframe
                 className={CONTENT_VIEWER_FRAME_CLASS_NAME}
-                srcDoc={fileHtml}
+                src={mediaUrl}
                 title={viewerName}
                 sandbox="allow-forms allow-modals allow-popups allow-scripts"
               />
             ) : (
               <div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>
-                {t("contentViewer.error.loadText")}
+                {textError}
               </div>
             )
-          ) : (
-            mediaUrl ? <iframe
+          ) : textTruncated ? (
+            <div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>
+              {t("contentViewer.text.truncated")}
+            </div>
+          ) : htmlReview.srcDoc !== null ? (
+            <iframe
+              ref={htmlReview.frameRef}
               className={CONTENT_VIEWER_FRAME_CLASS_NAME}
-              src={mediaUrl}
+              srcDoc={htmlReview.srcDoc}
               title={viewerName}
               sandbox="allow-forms allow-modals allow-popups allow-scripts"
-            /> : null
+              onLoad={htmlReview.onLoad}
+            />
+          ) : (
+            <div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>
+              {t("contentViewer.error.loadText")}
+            </div>
           )
         ) : null}
 

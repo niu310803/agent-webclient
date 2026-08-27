@@ -7,6 +7,7 @@ export const IndependentSurfaceFrame: React.FC<{
   error?: string;
   notFound?: string;
   onRetry?: () => void;
+  flushContent?: boolean;
   children?: React.ReactNode;
 }> = ({
   kind,
@@ -14,6 +15,7 @@ export const IndependentSurfaceFrame: React.FC<{
   error = "",
   notFound = "",
   onRetry,
+  flushContent = false,
   children,
 }) => {
   const { t } = useI18n();
@@ -31,7 +33,7 @@ export const IndependentSurfaceFrame: React.FC<{
       {!error && notFound ? (
         <div className="status-line" role="status">{notFound}</div>
       ) : null}
-      <section className="readonly-run-surface-content">
+      <section className={`readonly-run-surface-content${flushContent ? " is-flush" : ""}`}>
         {!loading && !error && !notFound ? children : null}
       </section>
     </main>

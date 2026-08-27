@@ -20,13 +20,13 @@ Artifact、Reference、普通附件和回答 Markdown 中的文件链接都以 V
 
 图片、PDF、HTML、文本、音频和视频进入 Viewer 后直接读取并展示；Office、压缩包和其他未知二进制保留 `office` / `unsupported` 状态，不发起资源正文预览请求，也不渲染内嵌操作。右键下载共用同一鉴权执行器，Workspace 文件先通过 `/api/file` 解析受限 `contentUrl`，ChatScope 资源继续使用原始逻辑 URL。
 
-Artifact、普通附件和回答 Markdown 中的受保护图片都先使用 Bearer/Cookie fetch 获得后端原始 MIME Blob，再创建短生命周期 object URL 交给 `img`、PDF/HTML iframe、audio 或 video；卸载或 URL 变化时通过 effect cleanup revoke，同时用 AbortController 取消过期请求。新 `publishedArtifacts[].url` 形如 `artifacts/run_01/poster.png`。历史 `/api/resource?file=...` Markdown 被分类为非法，不再预览或下载；外部 HTTP(S) 图片继续直接使用外链，跨域下载不发送平台 Bearer，`data:` 与 `blob:` 原样展示。
+Artifact、普通附件和回答 Markdown 中的受保护图片、PDF、音视频先使用 Bearer/Cookie fetch 获得后端原始 MIME Blob，再创建短生命周期 object URL 交给媒体元素；卸载或 URL 变化时通过 effect cleanup revoke，同时用 AbortController 取消过期请求。HTML Resource Viewer 则通过同一鉴权 API 读取完整文本并以不带 `allow-same-origin` 的 sandbox `srcDoc` 展示，使 Desktop 可注入受限的元素批注消息桥而不放宽 iframe 隔离；HTML iframe 使用无内边距内容槽贴边展示，页面本身的 body margin 仍按原文保留。受 CORS 限制而无法读取文本的外部 HTML 仍可回退到原 sandbox URL 只读预览，但不声明批注 capability。新 `publishedArtifacts[].url` 形如 `artifacts/run_01/poster.png`。历史 `/api/resource?file=...` Markdown 被分类为非法，不再预览或下载；外部 HTTP(S) 图片继续直接使用外链，跨域下载不发送平台 Bearer，`data:` 与 `blob:` 原样展示。
 
 回答 Markdown 兼容 `![说明](artifacts/run_01/demo.mp4)` 类历史输出：当图片语法的资源名以 `.m4v`、`.mov`、`.mp4`、`.mpeg`、`.mpg`、`.ogv` 或 `.webm` 结尾时，`MarkdownContent` 将其升级为带 controls 的鉴权 video 渲染；普通图片继续使用 `img`。若受保护资源的 Blob MIME 为空或 `application/octet-stream`，则按已识别的视频扩展名补齐 `video/*`，已有具体 MIME 不会被覆盖。该后缀判断仅用于兼容 Markdown 无标准视频语法的边界，Artifact 面板仍优先按自身的 MIME/扩展名规则识别预览类型。
 
 Desktop 内容区右键语义只把资源名称、媒体类型和固定 open/download capability 返回宿主，不返回上述 object URL、资源 API URL 或鉴权信息。执行时重新定位当前 AttachmentCard、Markdown 链接或 Viewer，并复用左键的 `ViewerTarget` 构造或统一鉴权下载路径。WorkPanel 的 Artifact/Reference 外层 tab 另通过共享契约的版本化 `workPanel.resource.downloadCurrent` host action 请求下载；只有当前 Resource Viewer 注册处理器并复用同一 `downloadViewerTarget`，其他页面静默忽略，动作本身不携带 route、资源 URL、路径或凭据。
 
-Desktop WorkPanel 中的 Artifact/Reference 图片 Viewer 还可声明 v1 preview-review capability。WebClient guest 不拥有批注模型，只根据 Desktop 同步的归一化矩形绘制编号覆盖层、把新框转换为原图像素坐标，并在交接时临时合成带编号 PNG。revision 只向宿主暴露不可逆的短摘要，不回传资源 URL。HTML Viewer 的 sandbox iframe、PDF、音视频、文本与不支持格式不声明该能力；缺少匹配 Desktop contract 时继续只读预览。
+Desktop WorkPanel 中的 Artifact/Reference 图片与 HTML Viewer 可声明 v1 preview-review capability。WebClient guest 不拥有批注模型：图片只根据 Desktop 同步的归一化矩形绘制编号覆盖层、把新框转换为原图像素坐标，并在交接时临时合成带编号 PNG；HTML 仍位于不带 `allow-same-origin` 的 sandbox iframe，通过只接受当前 frame source 与运行期 token 的窄 postMessage 桥同步编辑状态、选择元素和重绘 XPath 编号框。revision 只向宿主暴露不可逆的短摘要，不回传资源 URL。PDF、音视频、文本与不支持格式不声明该能力；缺少匹配 Desktop contract 时继续只读预览。
 
 ## 边界与非目标
 - Artifact 不负责用户上传；用户上传属于 Composer 附件链路。
@@ -42,5 +42,6 @@ Desktop WorkPanel 中的 Artifact/Reference 图片 Viewer 还可声明 v1 previe
 - `../src/features/viewers/lib/viewerTarget.ts`
 - `../src/features/viewers/lib/viewerRuntime.ts`
 - `../src/features/viewers/components/ContentViewerPanel.tsx`
+- `../src/features/viewers/hooks/useDesktopHtmlPreviewReview.ts`
 - `../src/shared/ui/MarkdownContent.tsx`
 - `../src/shared/ui/useAuthenticatedResourceUrl.ts`
