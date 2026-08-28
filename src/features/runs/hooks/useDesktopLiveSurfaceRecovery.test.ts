@@ -7,6 +7,7 @@ describe("recoverDesktopLiveSurface", () => {
     await expect(recoverDesktopLiveSurface({
       active: true,
       chatId: " chat-1 ",
+      routeChatId: "chat-1",
       loadChat,
     })).resolves.toBe(true);
 
@@ -22,11 +23,32 @@ describe("recoverDesktopLiveSurface", () => {
     await expect(recoverDesktopLiveSurface({
       active: false,
       chatId: "chat-1",
+      routeChatId: "chat-1",
       loadChat,
     })).resolves.toBe(false);
     await expect(recoverDesktopLiveSurface({
       active: true,
       chatId: "",
+      routeChatId: "",
+      loadChat,
+    })).resolves.toBe(false);
+
+    expect(loadChat).not.toHaveBeenCalled();
+  });
+
+  it("does not restore stale state while the Desktop route is switching chats", async () => {
+    const loadChat = jest.fn().mockResolvedValue(undefined);
+
+    await expect(recoverDesktopLiveSurface({
+      active: true,
+      chatId: "chat-old",
+      routeChatId: "chat-new",
+      loadChat,
+    })).resolves.toBe(false);
+    await expect(recoverDesktopLiveSurface({
+      active: true,
+      chatId: "chat-old",
+      routeChatId: "",
       loadChat,
     })).resolves.toBe(false);
 

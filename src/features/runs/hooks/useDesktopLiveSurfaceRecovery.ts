@@ -13,10 +13,12 @@ type LoadChatForSurfaceRecovery = (
 export async function recoverDesktopLiveSurface(input: {
   active: boolean;
   chatId: string;
+  routeChatId: string;
   loadChat: LoadChatForSurfaceRecovery;
 }): Promise<boolean> {
   const chatId = String(input.chatId || "").trim();
-  if (!input.active || !chatId) return false;
+  const routeChatId = String(input.routeChatId || "").trim();
+  if (!input.active || !chatId || routeChatId !== chatId) return false;
   await input.loadChat(chatId, {
     forceReload: true,
     focusComposerOnComplete: false,
@@ -35,6 +37,7 @@ export function useDesktopLiveSurfaceRecovery(
       void recoverDesktopLiveSurface({
         active: detail?.active === true,
         chatId: String(stateRef.current.chatId || "").trim(),
+        routeChatId: new URLSearchParams(window.location.search).get("chatId") || "",
         loadChat,
       }).catch(() => undefined);
     };
