@@ -72,6 +72,7 @@ jest.mock("@/shared/ui/UiButton", () => ({
     React.createElement(
       "button",
       {
+        ...(typeof props.className === "string" ? { className: props.className } : {}),
         "data-variant": props.variant,
         "data-loading": props.loading ? "true" : undefined,
         disabled: Boolean(props.disabled || props.loading),
@@ -89,6 +90,16 @@ jest.mock("@/shared/ui/UiTag", () => ({
 jest.mock("@/shared/ui/SearchFilterBar", () => ({
   SearchFilterBar: (props: Record<string, unknown>) =>
     React.createElement("div", { "data-testid": "search-filter" }, "search"),
+}));
+
+jest.mock("@/shared/ui/CodeEditor", () => ({
+  CodeEditor: (props: Record<string, unknown>) =>
+    React.createElement("textarea", {
+      className: props.className,
+      disabled: Boolean(props.disabled),
+      "data-language": props.language,
+      "data-path": props.path,
+    }),
 }));
 
 jest.mock("antd", () => {
@@ -134,6 +145,20 @@ jest.mock("antd", () => {
       ),
     Dropdown: ({ children }: { children: React.ReactNode }) =>
       ReactMod.createElement(React.Fragment, null, children),
+    Tooltip: ({ children }: { children: React.ReactNode }) =>
+      ReactMod.createElement(React.Fragment, null, children),
+    Typography: {
+      Text: (props: Record<string, unknown>) =>
+        ReactMod.createElement("span", props, props.children as React.ReactNode),
+    },
+    notification: {
+      success: jest.fn(),
+      error: jest.fn(),
+      warning: jest.fn(),
+      info: jest.fn(),
+      open: jest.fn(),
+      destroy: jest.fn(),
+    },
   };
 });
 
@@ -549,7 +574,7 @@ describe("SkillConsole", () => {
     );
 
     expect(html).toContain('aria-label="skillConsole.action.downloadSkill"');
-    expect(html).toMatch(/<button data-variant="ghost" disabled="" aria-label="skillConsole\.action\.downloadSkill"><i data-icon="download"><\/i><\/button>/);
+    expect(html).toMatch(/<button class="ui-icon-hover-24" data-variant="ghost" disabled="" aria-label="skillConsole\.action\.downloadSkill"><i data-icon="download"><\/i><\/button>/);
   });
 
   it("renders whole-skill delete after download as a danger action", () => {
@@ -608,7 +633,7 @@ describe("SkillConsole", () => {
     expect(downloadIndex).toBeGreaterThanOrEqual(0);
     expect(deleteIndex).toBeGreaterThan(downloadIndex);
     expect(html).toContain(
-      'data-variant="danger" aria-label="skillConsole.action.delete"',
+      'class="ui-icon-hover-24 tw:!text-danger" data-variant="ghost" aria-label="skillConsole.action.delete"',
     );
     expect(html).toContain(
       "skill-console-file-tree-actions tw:flex tw:flex-none tw:flex-nowrap",
@@ -676,14 +701,15 @@ describe("SkillConsole", () => {
 
     const unavailable = renderWorkspace(false);
     expect(unavailable).toMatch(
-      /<button data-variant="danger" disabled="" aria-label="skillConsole\.action\.delete"><i data-icon="delete"><\/i><\/button>/,
+      /<button class="ui-icon-hover-24 tw:!text-danger" data-variant="ghost" disabled="" aria-label="skillConsole\.action\.delete"><i data-icon="delete"><\/i><\/button>/,
     );
 
     const pending = renderWorkspace(true);
     expect(pending).toMatch(
-      /<button data-variant="danger" data-loading="true" disabled="" aria-label="skillConsole\.action\.deletingSkill"><i data-icon="delete"><\/i><\/button>/,
+      /<button class="ui-icon-hover-24 tw:!text-danger" data-variant="ghost" data-loading="true" disabled="" aria-label="skillConsole\.action\.deletingSkill"><i data-icon="delete"><\/i><\/button>/,
     );
-    expect(pending).toContain('textarea class="skill-console-textarea');
+    expect(pending).toContain('textarea class="skill-console-editor');
+    expect(pending).toContain('data-language="markdown"');
     expect(pending).toContain('disabled=""');
   });
 
@@ -740,7 +766,7 @@ describe("SkillConsole", () => {
     expect(html).toContain("minmax(220px,286px)_minmax(0,1fr)");
     expect(html).toContain("video/mp4");
     expect(html).toContain("asset-sha");
-    expect(html).not.toContain("skill-console-textarea");
+    expect(html).not.toContain("skill-console-editor");
     expect(html).not.toContain("minmax(220px,260px)");
     expect(html).not.toContain("skill-console-binary-preview");
   });
@@ -868,7 +894,7 @@ describe("SkillConsole", () => {
     expect(html).toContain("skillConsole.binary.previewLoading");
     expect(html).toContain("image/png");
     expect(html).toContain("image-sha");
-    expect(html).not.toContain("skill-console-textarea");
+    expect(html).not.toContain("skill-console-editor");
   });
 
   it("anchors new entries to the selected directory or file parent", () => {
@@ -945,7 +971,7 @@ describe("SkillConsole", () => {
     expect(html).toContain("skillConsole.field.children");
     expect(html).toContain(">1<"); // one direct child: references/guide.md
     expect(html).toContain('data-icon="folder_open"'); // expanded directory icon
-    expect(html).not.toContain("skill-console-textarea");
+    expect(html).not.toContain("skill-console-editor");
 
     const collapsedHtml = renderToStaticMarkup(
       React.createElement(SkillFileWorkspace, {
@@ -1036,7 +1062,7 @@ describe("SkillConsole", () => {
 
     expect(html).toContain('aria-label="skillConsole.action.addFile"');
     expect(html).toContain(
-      '<i data-icon="article"></i>skillConsole.action.addFile</button>',
+      'aria-label="skillConsole.action.addFile"><i data-icon="description"></i></button>',
     );
     expect(html).toContain('aria-label="skillConsole.action.uploadFile"');
     expect(html).toContain(

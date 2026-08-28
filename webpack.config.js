@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin');
 
 const port = Number(process.env.PORT || 11948);
 const apiTarget = String(process.env.BASE_URL || '').trim();
@@ -198,6 +199,12 @@ module.exports = (env, argv) => {
       ],
     },
     plugins: [
+      new MonacoWebpackPlugin({
+        languages: [
+          'markdown', 'json', 'yaml', 'javascript', 'typescript',
+          'python', 'shell', 'html', 'css', 'xml', 'sql', 'ini',
+        ],
+      }),
       new PublicAssetPlugin({
         from: 'public/default-skill.png',
         to: 'default-skill.png',
