@@ -233,10 +233,20 @@ function collectRunTerminals(events: AgentEvent[]): RunTerminalInfo[] {
   });
 }
 
+export interface BuildTimelineDisplayItemsOptions {
+  /**
+   * 存在正在观察的活跃 run（如 attach 续接，无本地 query 头、
+   * state.events 中也没有未消费的 run 终结事件）时，
+   * 后续节点归入 run 分组而非 standalone。
+   */
+  hasActiveRun?: boolean;
+}
+
 export function buildTimelineDisplayItems(
   nodes: TimelineNode[],
   events: AgentEvent[],
   taskItemsById: Map<string, TaskItemMeta> = new Map(),
+  options: BuildTimelineDisplayItemsOptions = {},
 ): TimelineDisplayItem[] {
   const items: TimelineDisplayItem[] = [];
   const runTerminals = collectRunTerminals(events);
@@ -368,7 +378,7 @@ export function buildTimelineDisplayItems(
       continue;
     }
 
-    if (runTerminalCursor < runTerminals.length) {
+    if (runTerminalCursor < runTerminals.length || options.hasActiveRun) {
       flushStandalone();
       pendingRunNodes.push(node);
       continue;

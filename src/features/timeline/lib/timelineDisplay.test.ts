@@ -417,6 +417,45 @@ describe('buildTimelineDisplayItems', () => {
     ]);
   });
 
+  it('groups nodes into an in-progress run when hasActiveRun is set (attach observer)', () => {
+    const items = buildTimelineDisplayItems(
+      [
+        createNode({ id: 'thinking_1', kind: 'thinking', text: 'plan', ts: 110 }),
+        createNode({ id: 'tool_1', kind: 'tool', toolName: '_sandbox_bash_', toolLabel: '执行命令', ts: 120 }),
+        createNode({ id: 'content_1', kind: 'content', text: 'partial answer', ts: 130 }),
+      ],
+      // attach 续接：events 中没有 request.query，也没有 run 终结事件
+      [],
+      new Map(),
+      { hasActiveRun: true },
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      kind: 'run',
+      queryNode: null,
+    });
+    expect(items[0].kind === 'run' ? items[0].nodes.map((node) => node.id) : []).toEqual([
+      'thinking_1',
+      'tool_1',
+      'content_1',
+    ]);
+    expect(items[0].kind === 'run' ? items[0].completedAt : 'bad').toBeUndefined();
+    expect(items[0].kind === 'run' ? items[0].terminalType : 'bad').toBeUndefined();
+  });
+
+  it('keeps nodes standalone when hasActiveRun is not set', () => {
+    const items = buildTimelineDisplayItems(
+      [
+        createNode({ id: 'thinking_1', kind: 'thinking', text: 'plan', ts: 110 }),
+        createNode({ id: 'content_1', kind: 'content', text: 'answer', ts: 130 }),
+      ],
+      [],
+    );
+
+    expect(items.map((item) => item.kind)).toEqual(['standalone', 'standalone']);
+  });
+
   it('still merges matching tool nodes inside a task group', () => {
     const items = buildTimelineDisplayItems(
       [
