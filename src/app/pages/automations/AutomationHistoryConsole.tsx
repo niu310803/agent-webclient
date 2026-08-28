@@ -24,6 +24,7 @@ import {
   getAutomationExecution,
   getAutomationExecutions,
   getAutomations,
+  triggerAutomation,
   toggleAutomation,
 } from "@/shared/data";
 import type {
@@ -364,6 +365,9 @@ export function AutomationHistoryConsole({
   const [listError, setListError] = useState("");
   const [executionError, setExecutionError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
+  const [triggeringIds, setTriggeringIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorAutomationId, setEditorAutomationId] = useState("");
   const [resultExecution, setResultExecution] =
@@ -378,6 +382,7 @@ export function AutomationHistoryConsole({
   const executionRequestRef = useRef(0);
   const detailRequestRef = useRef(0);
   const pushTimerRef = useRef<number | null>(null);
+  const triggeringIdsRef = useRef<Set<string>>(new Set());
 
   const effectiveAgents = agents.length ? agents : state.agents;
   const effectiveTeams = teams.length ? teams : state.teams;
@@ -656,6 +661,40 @@ export function AutomationHistoryConsole({
     });
   };
 
+  const triggerAutomationItem = async (item: AutomationSummaryResponse) => {
+    if (triggeringIdsRef.current.has(item.id)) return;
+    triggeringIdsRef.current.add(item.id);
+    setTriggeringIds(new Set(triggeringIdsRef.current));
+    try {
+      const response = await triggerAutomation({ id: item.id });
+      if (!response.data.accepted) {
+        throw new Error(response.data.status || "trigger was not accepted");
+      }
+      message.success(
+        t("automationConsole.message.triggerAccepted", {
+          name: item.name || item.id,
+        }),
+      );
+      void loadAutomationList(selectedIdRef.current, {
+        silent: true,
+        loadHistory: item.id === selectedIdRef.current,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        message.error(t("automationConsole.message.triggerUnsupported"));
+      } else {
+        message.error(
+          t("automationConsole.message.triggerFailed", {
+            detail: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    } finally {
+      triggeringIdsRef.current.delete(item.id);
+      setTriggeringIds(new Set(triggeringIdsRef.current));
+    }
+  };
+
   const loadExecutionDetail = useCallback(async (item: AutomationExecutionResponse) => {
     const request = detailRequestRef.current + 1;
     detailRequestRef.current = request;
@@ -698,9 +737,24 @@ export function AutomationHistoryConsole({
     onNavigateAway?.();
   };
 
+  const selectedTriggering = selected
+    ? triggeringIds.has(selected.id)
+    : false;
   const moreSettingsMenu: MenuProps = {
     items: selected
       ? [
+          {
+            key: "trigger",
+            icon: (
+              <MaterialIcon
+                name={selectedTriggering ? "progress_activity" : "bolt"}
+                className={selectedTriggering ? "tw:animate-ui-spin" : ""}
+              />
+            ),
+            label: t("automationConsole.action.triggerNow"),
+            disabled: selectedTriggering,
+            onClick: () => void triggerAutomationItem(selected),
+          },
           {
             key: "copy",
             icon: <MaterialIcon name="content_copy" />,

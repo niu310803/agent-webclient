@@ -52,6 +52,7 @@ import {
 	setAccessToken,
 	submitFeedback as submitFeedbackHttp,
 	toggleAutomation as toggleAutomationHttp,
+	triggerAutomation as triggerAutomationHttp,
 	updateAgent as updateAgentHttp,
 	updateAgentName as updateAgentNameHttp,
 	updateAgentModelConfig as updateAgentModelConfigHttp,
@@ -107,6 +108,8 @@ import {
 	type CompactChatResponse,
 	type CompactLevel,
 	type ToggleAutomationRequest,
+	type TriggerAutomationRequest,
+	type TriggerAutomationResponse,
 	type UpdateAgentRequest,
 	type UpdateAgentNameRequest,
 	type UpdateAgentModelConfigRequest,
@@ -537,6 +540,12 @@ export function toggleAutomation(
 	params: ToggleAutomationRequest,
 ): Promise<ApiResponse<AutomationDetailResponse>> {
 	return toggleAutomationHttp(params);
+}
+
+export function triggerAutomation(
+	params: TriggerAutomationRequest,
+): Promise<ApiResponse<TriggerAutomationResponse>> {
+	return triggerAutomationHttp(params);
 }
 
 export function getAutomationExecutions(

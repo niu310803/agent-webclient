@@ -21,9 +21,7 @@ import { useAppDispatch, useAppState } from "@/app/state/AppContext";
 import type { CurrentWorkerSummary } from "@/features/workers/lib/currentWorker";
 import {
   createAutomation,
-  createRequestId,
   deleteAutomation,
-  executeQueryOnce,
   getAutomation,
   getAutomationExecutions,
   getAutomations,
@@ -669,7 +667,7 @@ export const AutomationModal: React.FC<{
   >([]);
   const [listAction, setListAction] = useState<{
     id: string;
-    key: "toggle" | "run" | "copy" | "delete";
+    key: "toggle" | "copy" | "delete";
   } | null>(null);
   const [sourceDraft, setSourceDraft] = useState("");
   const [sourceSha256, setSourceSha256] = useState("");
@@ -1285,27 +1283,6 @@ export const AutomationModal: React.FC<{
     }
   };
 
-  const runAutomationOnce = async (item: AutomationSummaryResponse) => {
-    const response = await getAutomation(item.id);
-    const automation = response.data;
-    const owner = toRunOwner(automation);
-    if (!owner) {
-      throw new Error(t("automationConsole.error.runOwnerRequired"));
-    }
-    await executeQueryOnce({
-      requestId: createRequestId("automation_run"),
-      message: automation.query.message,
-      owner,
-      chatId: automation.query.chatId,
-      role: automation.query.role || "automation",
-      hidden: automation.query.hidden ?? true,
-      params: automation.query.params,
-    });
-    message.success(
-      t("automationConsole.message.runSuccess", { name: item.name || item.id }),
-    );
-  };
-
   const copyAutomation = async (item: AutomationSummaryResponse) => {
     const response = await getAutomation(item.id);
     const copyName = t("automationConsole.copy.name", {
@@ -1322,15 +1299,13 @@ export const AutomationModal: React.FC<{
 
   const performListAction = async (
     item: AutomationSummaryResponse,
-    key: "toggle" | "run" | "copy" | "delete",
+    key: "toggle" | "copy" | "delete",
   ) => {
     if (listAction) return;
     setListAction({ id: item.id, key });
     try {
       if (key === "toggle") {
         await toggleSelected(item);
-      } else if (key === "run") {
-        await runAutomationOnce(item);
       } else if (key === "copy") {
         await copyAutomation(item);
       } else {
@@ -1342,12 +1317,9 @@ export const AutomationModal: React.FC<{
           ? actionError.message
           : String(actionError);
       setError(detail);
-      const messageKey =
-        key === "run"
-          ? "automationConsole.message.runFailed"
-          : key === "copy"
-            ? "automationConsole.message.copyFailed"
-            : "automationConsole.message.actionFailed";
+      const messageKey = key === "copy"
+        ? "automationConsole.message.copyFailed"
+        : "automationConsole.message.actionFailed";
       message.error(t(messageKey, { detail }));
     } finally {
       setListAction(null);
@@ -1383,11 +1355,6 @@ export const AutomationModal: React.FC<{
           : t("automationConsole.action.enable"),
       },
       {
-        key: "run",
-        icon: <MaterialIcon className="automation-menu-icon" name="bolt" />,
-        label: t("automationConsole.action.runOnce"),
-      },
-      {
         key: "copy",
         icon: (
           <MaterialIcon className="automation-menu-icon" name="content_copy" />
@@ -1408,7 +1375,7 @@ export const AutomationModal: React.FC<{
         requestListDelete(item);
         return;
       }
-      if (key === "toggle" || key === "run" || key === "copy") {
+      if (key === "toggle" || key === "copy") {
         void performListAction(item, key);
       }
     },

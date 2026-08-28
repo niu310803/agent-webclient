@@ -582,6 +582,12 @@ export const dataEndpoints = createEndpointRegistry({
     method: "POST",
     transport: "http",
   }),
+  automationTrigger: defineEndpoint({
+    key: "automation.trigger",
+    path: "/api/automation/trigger",
+    method: "POST",
+    transport: "http",
+  }),
   automationUpdate: defineEndpoint({
     key: "automation.update",
     path: "/api/automation/update",

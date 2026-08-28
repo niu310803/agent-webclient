@@ -65,6 +65,7 @@ export {
   searchGlobal,
   submitFeedback,
   toggleAutomation,
+  triggerAutomation,
   updateAgent,
   updateAgentName,
   updateAgentModelConfig,

@@ -8,13 +8,15 @@ Automation 页面由 `/automations` 路由进入，页面入口是 `src/app/page
 - 按日期时间轴展示最近 Execution，覆盖 `running/success/failed/canceled` 四种状态、耗时、两行内结果摘要和轻量展开详情。
 - 在用户明确点击“查看完整结果”后按需加载 `resultContent`，并复用 `MarkdownContent` 渲染；列表接口不读取完整助手输出。
 - 支持创建和编辑 cron、zoneId、remainingRuns、agentKey/teamId 与 query payload；description、zoneId、query.role、query.hidden 均可省略。
-- 支持启停、复制、删除自动化，不提供伪造的“运行一次”或失败重试入口。
+- 支持启停、复制、删除自动化，并在选中项详情区的“更多设置”菜单提供“立即触发”；不提供伪造的 `/api/query` 单次运行或失败重试入口。
 - 为 message、role、hidden 和 params JSON 提供前端表单编辑与基本校验。
 
 ## 核心流程
 进入 `/automations` 后，页面通过 `POST /api/automations` 加载配置列表和 `executionHistory` 服务状态，默认选中第一条 Automation；History 可用时通过 `POST /api/automation/executions` 按 20 条分页加载当前 Automation 的历史，并默认展开最近一次。分页根据 `executionId` 去重，切换、分页和详情请求均使用请求序号忽略迟到响应。
 
 页面订阅 `automation.execution.created/updated/completed`：当前 Automation 的事件会防抖刷新第一页和列表摘要，其他 Automation 的事件只刷新左栏摘要。`initializing/unavailable` 会显示明确的 History 提示且不影响配置操作；`degraded` 继续展示仍可读取的历史。历史接口 503 只隔离右侧历史，不伪装成空记录。
+
+左栏列表项只负责选择 Automation；选中启用或暂停项后，可在详情区“更多设置”菜单通过 HTTP `POST /api/automation/trigger` 提交 `{id}`。触发中的菜单项会禁用并显示 loading，不锁住详情区其他操作；成功仅提示“已触发”并静默刷新摘要，最终状态继续由 execution push 驱动。触发失败只显示动作 toast，不污染列表或 History 错误态；旧 Platform 返回 404 时提示当前 Platform 不支持立即触发或该 Automation 已不存在。
 
 Execution 行保持 48–56px 的高密度布局；`resultPreview` 最多两行。展开区不重复结果摘要，仅展示完整时间、Run ID、finish reason、错误信息和操作，并使用留白、浅背景与行分隔表达层级，不增加卡片边框。完整结果通过 `POST /api/automation/execution` 按需读取，可复制结果、Execution ID、Run ID、查看触发 Query 和打开对话。
 
@@ -27,7 +29,7 @@ Agent Execution 使用 `/agent/:agentKey?chatId=...` 深链；Team Execution 通
 ## 边界与非目标
 - Automation 调度、cron 解释、执行上下文和失败重试由后端负责。
 - 前端不生成自动化执行计划，也不调用普通 `/api/query` 模拟单次运行或重试。
-- Automation 管理接口当前固定走 HTTP，不随对话 WebSocket transport 路由。
+- Automation 管理接口（包括原生立即触发）固定走 HTTP，不随对话 WebSocket transport 路由。
 - 完整结果只存在于单条 Execution 详情响应，历史列表只消费 `hasResult/resultPreview`。
 - 省略 `query.role` 时按 `automation` 执行，省略 `query.hidden` 时默认隐藏该 query 消息；显式 `hidden: false` 才在 Chat 时间线显示。省略 `zoneId` 时跟随 Platform 当前时区。
 

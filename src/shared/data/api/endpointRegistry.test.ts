@@ -28,6 +28,8 @@ describe("endpoint WebSocket capabilities", () => {
     expect(dataEndpoints.automation.method).toBe("POST");
     expect(dataEndpoints.automationExecutions.method).toBe("POST");
     expect(dataEndpoints.automationExecution.method).toBe("POST");
+    expect(dataEndpoints.automationTrigger.method).toBe("POST");
+    expect(dataEndpoints.automationTrigger.transport).toBe("http");
     expect(dataEndpoints.upload.transport).toBe("http");
     expect(dataEndpoints.resource.transport).toBe("resource");
   });

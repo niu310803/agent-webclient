@@ -382,6 +382,17 @@ export interface ToggleAutomationRequest {
   enabled: boolean;
 }
 
+export interface TriggerAutomationRequest {
+  id: string;
+}
+
+export interface TriggerAutomationResponse {
+  accepted: boolean;
+  status: "accepted";
+  automationId: string;
+  executionId: string;
+}
+
 export interface DeleteAutomationRequest {
   id: string;
 }
@@ -2705,6 +2716,12 @@ export function toggleAutomation(
   params: ToggleAutomationRequest,
 ): Promise<ApiResponse<AutomationDetailResponse>> {
   return postJson<AutomationDetailResponse>(dataEndpoints.automationToggle.path, params);
+}
+
+export function triggerAutomation(
+  params: TriggerAutomationRequest,
+): Promise<ApiResponse<TriggerAutomationResponse>> {
+  return postJson<TriggerAutomationResponse>(dataEndpoints.automationTrigger.path, params);
 }
 
 export function getAutomationExecutions(

@@ -123,6 +123,7 @@ import {
   submitFeedback,
   submitTool,
   toggleAutomation,
+  triggerAutomation,
   updateAgent,
   updateAdminSource,
   updateAgentName,
@@ -686,6 +687,7 @@ describe('data client query payloads', () => {
       query: { message: 'updated' },
     });
     await toggleAutomation({ id: 'daily-demo', enabled: false });
+    await triggerAutomation({ id: 'daily-demo' });
     await getAutomationExecutions({ id: 'daily-demo', limit: 20 });
     await getAutomationExecution({ executionId: 'execution-1' });
     await deleteAutomation({ id: 'daily-demo' });
@@ -717,6 +719,7 @@ describe('data client query payloads', () => {
         },
       },
       { url: '/api/automation/toggle', body: { id: 'daily-demo', enabled: false } },
+      { url: '/api/automation/trigger', body: { id: 'daily-demo' } },
       { url: '/api/automation/executions', body: { id: 'daily-demo', limit: 20 } },
       { url: '/api/automation/execution', body: { executionId: 'execution-1' } },
       { url: '/api/automation/delete', body: { id: 'daily-demo' } },
