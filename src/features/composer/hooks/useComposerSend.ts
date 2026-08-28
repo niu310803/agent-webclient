@@ -542,6 +542,7 @@ export function useComposerSend(input: UseComposerSendInput) {
     }
 
     setInputValue("");
+    dispatch({ type: "SET_COMPOSER_DRAFT", draft: "" });
     clearComposerAttachments();
     clearMustUseSkills();
     setSlashDismissed(false);

@@ -1916,6 +1916,40 @@ describe('replayEvent tool migration', () => {
     );
   });
 
+  it('clears the shared blank-chat draft when starting a new conversation', () => {
+    const state = createInitialState();
+    state.chatId = 'chat_old';
+    state.composerDraft = 'already sent';
+    state.composerDraftByChatId = { '': 'already sent' };
+    const dispatch = jest.fn();
+    useAppContext.mockReturnValue({
+      state,
+      dispatch,
+      stateRef: { current: state },
+      querySessionsRef: { current: new Map() },
+      chatQuerySessionIndexRef: { current: new Map() },
+      activeQuerySessionRequestIdRef: { current: '' },
+    });
+
+    let actions: ReturnType<typeof useTestConversationActions> | null = null;
+    const Harness = () => {
+      actions = useTestConversationActions();
+      return null;
+    };
+    renderToStaticMarkup(React.createElement(Harness));
+
+    actions?.activateBlankConversation();
+
+    const chatResetCall = dispatch.mock.calls.findIndex(
+      ([action]) => action.type === 'SET_CHAT_ID' && action.chatId === '',
+    );
+    const draftResetCall = dispatch.mock.calls.findIndex(
+      ([action]) => action.type === 'SET_COMPOSER_DRAFT' && action.draft === '',
+    );
+    expect(chatResetCall).toBeGreaterThanOrEqual(0);
+    expect(draftResetCall).toBeGreaterThan(chatResetCall);
+  });
+
   it('stores viewportKey from new MCP payload and keeps toolName for display', () => {
     const state = createReplayState();
 

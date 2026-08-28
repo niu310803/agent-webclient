@@ -562,6 +562,145 @@ describe('useComposerSend active run gate', () => {
     createRequestIdMock.mockImplementation((prefix: string) => `${prefix}_request`);
   });
 
+  it('clears the persisted composer draft before dispatching a new-chat message', () => {
+    const state = createInitialState();
+    state.pendingNewChatAgentKey = 'agent-a';
+    state.composerDraft = 'hello';
+    state.composerDraftByChatId = { '': 'hello' };
+    const operationOrder: string[] = [];
+    const dispatch = jest.fn((action) => {
+      if (action.type === 'SET_COMPOSER_DRAFT' && action.draft === '') {
+        operationOrder.push('clear-draft');
+      }
+    });
+    const setInputValue = jest.fn();
+    const setSlashDismissed = jest.fn();
+    const closeMention = jest.fn();
+    let actions: ReturnType<typeof useComposerSend> | null = null;
+    const originalWindow = globalThis.window;
+    const originalCustomEvent = globalThis.CustomEvent;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { search: '' },
+        localStorage: {
+          getItem: jest.fn(() => null),
+          setItem: jest.fn(),
+        },
+        dispatchEvent: jest.fn((event: Event) => {
+          if (event.type === 'agent:send-message') {
+            operationOrder.push('send-message');
+          }
+          return true;
+        }),
+      },
+    });
+    Object.defineProperty(globalThis, 'CustomEvent', {
+      configurable: true,
+      value: class TestCustomEvent<T = unknown> {
+        detail: T | undefined;
+        type: string;
+
+        constructor(type: string, init?: CustomEventInit<T>) {
+          this.type = type;
+          this.detail = init?.detail;
+        }
+      },
+    });
+
+    const Harness = () => {
+      actions = useComposerSend({
+        accessLevel: 'default',
+        attachmentChatId: '',
+        backgroundCommandText: {
+          rememberPending: '',
+          rememberError: '',
+          learnPending: '',
+          learnError: '',
+          compactPending: '',
+          compactError: '',
+        },
+        clearComposerAttachments: jest.fn(),
+        clearMustUseSkills: jest.fn(),
+        closeMention,
+        controlParams: {},
+        dispatch,
+        executeSlashCommandInput: {
+          closeMention,
+          latestQueryText: '',
+          setInputValue,
+          setSlashDismissed,
+          slashAvailability: {
+            streaming: false,
+            hasLatestQuery: false,
+            isFrontendActive: false,
+            canUsePlanningMode: true,
+            canUseVoiceMode: true,
+            hasActiveChat: false,
+            hasCurrentWorker: true,
+            workerHistoryCount: 0,
+            commandOverlayOpen: false,
+            canShowUsage: false,
+          },
+          state: {
+            rightSidebarOpen: false,
+            planningMode: false,
+            editingMode: false,
+            chatId: '',
+            runId: '',
+            usagePopoverOpen: false,
+          },
+          toggleVoiceMode: jest.fn(),
+        },
+        hasUploadingAttachments: false,
+        inputValue: 'hello',
+        isAwaitingActive: false,
+        isVoiceMode: false,
+        mainChatRunning: false,
+        modelOverride: {},
+        mustUseSkillsAgentKey: '',
+        mustUseSkills: [],
+        selectSlashItem: () => null,
+        onSelectSlashSkill: jest.fn(),
+        sendAttachmentMeta: [],
+        sendReferences: [],
+        setInputValue,
+        setSlashDismissed,
+        showSlashPalette: false,
+        speechListening: false,
+        state,
+        stateRef: { current: state },
+        querySessionsRef: { current: new Map() },
+        activeQuerySessionRequestIdRef: { current: '' },
+        stopSpeechInput: jest.fn(),
+        textareaRef: React.createRef(),
+        updateMentionSuggestions: jest.fn(),
+      });
+      return null;
+    };
+
+    try {
+      renderToStaticMarkup(React.createElement(Harness));
+      actions?.handleSend();
+    } finally {
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: originalWindow,
+      });
+      Object.defineProperty(globalThis, 'CustomEvent', {
+        configurable: true,
+        value: originalCustomEvent,
+      });
+    }
+
+    expect(setInputValue).toHaveBeenCalledWith('');
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SET_COMPOSER_DRAFT',
+      draft: '',
+    });
+    expect(operationOrder).toEqual(['clear-draft', 'send-message']);
+  });
+
   it('queues a steer instead of sending a new query when the main chat has activeRun but streaming is false', () => {
     const state = createInitialState();
     state.chatId = 'chat-1';
