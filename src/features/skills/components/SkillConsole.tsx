@@ -39,12 +39,14 @@ import type {
   AdminSourceResponse,
 } from "@/shared/data";
 import { useI18n } from "@/shared/i18n";
+import { CodeEditor } from "@/shared/ui/CodeEditor";
 import { MaterialIcon } from "@/shared/ui/MaterialIcon";
 import type { MaterialIconName } from "@/shared/ui/MaterialIcon";
 import { SearchFilterBar } from "@/shared/ui/SearchFilterBar";
 import { UiButton } from "@/shared/ui/UiButton";
 import { UiTag } from "@/shared/ui/UiTag";
 import { requestSkillDeletion } from "@/features/skills/lib/skillDeletion";
+import { useOptionalAppContext } from "@/app/state/AppContext";
 
 type StatusFilter = "all" | AdminSkillStatus;
 
@@ -265,8 +267,8 @@ const SKILL_FILE_EDITOR_META_CLASS_NAME =
   "skill-console-file-editor-meta tw:flex tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2";
 const SKILL_FILE_EDITOR_HEAD_PATH_CLASS_NAME =
   "skill-console-file-editor-head-path tw:min-w-0 tw:flex-1 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap tw:font-code tw:text-ink-1";
-const SKILL_TEXTAREA_CLASS_NAME =
-  "skill-console-textarea tw:min-h-[520px] tw:flex-auto tw:resize-y tw:font-code tw:leading-[1.5] tw:[tab-size:2] tw:max-[860px]:min-h-80";
+const SKILL_EDITOR_CLASS_NAME =
+  "skill-console-editor tw:min-h-[520px] tw:flex-auto tw:rounded-control tw:border tw:[border-color:color-mix(in_srgb,var(--line-soft)_82%,transparent)] tw:max-[860px]:min-h-80";
 const SKILL_BINARY_PANEL_CLASS_NAME =
   "skill-console-binary-panel tw:flex tw:flex-col tw:gap-3 tw:rounded-control tw:border tw:p-3 tw:text-sm tw:text-ink-1 tw:[border-color:color-mix(in_srgb,var(--line-soft)_82%,transparent)]";
 const SKILL_BINARY_GRID_CLASS_NAME =
@@ -346,6 +348,49 @@ function languageLabel(entry: AdminSkillFileEntry | undefined): string {
   }
   const ext = entry.path.split(".").pop()?.toLowerCase() || "";
   return ext ? ext.toUpperCase() : "Plain Text";
+}
+
+function monacoLanguage(
+  entry: AdminSkillFileEntry | undefined,
+  path: string,
+): string | undefined {
+  if (entry?.language && entry.language !== "plain") return entry.language;
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  switch (ext) {
+    case "md":
+    case "markdown":
+      return "markdown";
+    case "json":
+      return "json";
+    case "yaml":
+    case "yml":
+      return "yaml";
+    case "js":
+    case "mjs":
+    case "cjs":
+      return "javascript";
+    case "ts":
+    case "tsx":
+      return "typescript";
+    case "jsx":
+      return "javascript";
+    case "py":
+      return "python";
+    case "sh":
+    case "bash":
+    case "zsh":
+      return "shell";
+    case "html":
+      return "html";
+    case "css":
+      return "css";
+    case "xml":
+      return "xml";
+    case "sql":
+      return "sql";
+    default:
+      return undefined;
+  }
 }
 
 function isFilePathSafe(rawPath: string): boolean {
@@ -972,6 +1017,7 @@ export const SkillFileWorkspace: React.FC<SkillFileWorkspaceProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const appContext = useOptionalAppContext();
   const entries = detail.fileManifest.entries || [];
   const selectedEntry = findEntryByPath(entries, selectedFilePath);
   const visibleEntries = entries.filter((entry) =>
@@ -1337,11 +1383,16 @@ export const SkillFileWorkspace: React.FC<SkillFileWorkspaceProps> = ({
                 </div>
               </div>
             ) : isTextSelected ? (
-              <Input.TextArea
-                className={SKILL_TEXTAREA_CLASS_NAME}
+              <CodeEditor
+                className={SKILL_EDITOR_CLASS_NAME}
                 value={fileContent}
+                path={selectedFilePath || "untitled"}
+                language={monacoLanguage(selectedEntry, selectedFilePath)}
+                theme={
+                  appContext?.state.themeMode === "dark" ? "dark" : "light"
+                }
                 disabled={interactionLocked}
-                onChange={(e) => onFileChange(e.target.value)}
+                onChange={onFileChange}
               />
             ) : (
               <div className={SKILL_BINARY_PANEL_CLASS_NAME}>

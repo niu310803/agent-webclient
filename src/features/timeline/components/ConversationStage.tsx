@@ -730,8 +730,11 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       timelineEntries,
       state.events,
       state.taskItemsById,
+      // attach 续接观察的 run 没有 query 头，events 里也暂无终结事件；
+      // 传入活跃 run 标记，避免流式期间的节点全部退化为 standalone
+      { hasActiveRun: Boolean(state.currentChatActiveRun) },
     );
-  }, [timelineEntries, state.events, state.taskItemsById]);
+  }, [timelineEntries, state.events, state.taskItemsById, state.currentChatActiveRun]);
 
   const runStartedAt = useMemo(() => {
     if (!isMainChatRunning && !state.streaming) return null;

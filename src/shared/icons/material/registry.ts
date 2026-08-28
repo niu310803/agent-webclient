@@ -69,6 +69,8 @@ export const materialIconSymbolIds = {
   light_mode: "material-symbol-light-mode",
   list_arrow: "material-symbol-list-arrow",
   lock: "material-symbol-lock",
+  match_case: "material-symbol-match-case",
+  match_word: "material-symbol-match-word",
   mic: "material-symbol-mic",
   more_horiz: "material-symbol-more-horiz",
   open_in_new: "material-symbol-open-in-new",
