@@ -11,6 +11,7 @@ import {
   createNewChatRouteKey,
   createResolvedNewChatRoute,
   isAgentRouteAuthenticationError,
+  parseComposerPrefillPayload,
   parseNewChatTimestamp,
   resolveNewChatResendRouteAction,
 } from "@/app/layout/AgentChatShell";
@@ -199,6 +200,21 @@ const globalWithDom = globalThis as typeof globalThis & {
 };
 
 describe("AgentChatShell", () => {
+  it("accepts a complete one-shot composer Skill prefill", () => {
+    expect(parseComposerPrefillPayload(new URLSearchParams(
+      "composerDraft=Create+a+Skill&composerSkill=skill-creator",
+    ))).toEqual({
+      draft: "Create a Skill",
+      skillKey: "skill-creator",
+    });
+    expect(parseComposerPrefillPayload(new URLSearchParams(
+      "composerDraft=Create+a+Skill&composerSkill=bad%2Fkey",
+    ))).toBeNull();
+    expect(parseComposerPrefillPayload(new URLSearchParams(
+      "composerDraft=Create+a+Skill",
+    ))).toBeNull();
+  });
+
   it("classifies only an API 401 as an authentication failure", () => {
     expect(isAgentRouteAuthenticationError(new ApiError("unauthorized", { status: 401 }))).toBe(true);
     expect(isAgentRouteAuthenticationError(new ApiError("upstream", { status: 502 }))).toBe(false);
@@ -544,6 +560,49 @@ describe("AgentChatShell", () => {
       expect.objectContaining({
         type: "agent:start-new-conversation",
       }),
+    );
+
+    useEffectSpy.mockRestore();
+  });
+
+  it("consumes create-skill into an editable draft with skill-creator selected", () => {
+    const dispatch = jest.fn();
+    const dispatchEvent = globalWithDom.window?.dispatchEvent as jest.Mock;
+    const useEffectSpy = jest
+      .spyOn(React, "useEffect")
+      .mockImplementation((effect: React.EffectCallback) => {
+        effect();
+      });
+    useSearchParams.mockReturnValue([
+      new URLSearchParams(
+        "newChat=1783680000000&composerDraft=Create+a+useful+Skill&composerSkill=skill-creator&lang=en",
+      ),
+    ]);
+    useAppState.mockReturnValue({
+      ...createInitialState(),
+      agents: [
+        { key: "demo-agent", name: "Demo Agent", role: "Worker", mode: "REACT" },
+      ],
+      workerSelectionKey: "agent:demo-agent",
+    });
+    useAppDispatch.mockReturnValue(dispatch);
+
+    renderToStaticMarkup(React.createElement(AgentChatShell));
+
+    expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "agent:start-new-conversation",
+        detail: expect.objectContaining({
+          composerDraft: "Create a useful Skill",
+          selectedSkills: [
+            { key: "skill-creator", label: "skill-creator" },
+          ],
+        }),
+      }),
+    );
+    expect(navigateMock).toHaveBeenCalledWith(
+      "/agent/demo-agent?lang=en&newChat=1783680000000",
+      { replace: true },
     );
 
     useEffectSpy.mockRestore();

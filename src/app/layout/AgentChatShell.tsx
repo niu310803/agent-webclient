@@ -32,6 +32,26 @@ export function parseNewChatTimestamp(rawValue: unknown): string {
   return /^[1-9]\d{12}$/.test(timestamp) ? timestamp : "";
 }
 
+export type ComposerPrefillPayload = {
+  draft: string;
+  skillKey: string;
+};
+
+export function parseComposerPrefillPayload(
+  searchParams: URLSearchParams,
+): ComposerPrefillPayload | null {
+  const draft = String(searchParams.get("composerDraft") || "").trim();
+  const skillKey = String(searchParams.get("composerSkill") || "").trim();
+  if (
+    !draft ||
+    draft.length > 2048 ||
+    !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(skillKey)
+  ) {
+    return null;
+  }
+  return { draft, skillKey };
+}
+
 let lastCreatedNewChatTimestamp = 0;
 
 export function createNewChatTimestamp(now = Date.now()): string {
@@ -319,6 +339,10 @@ export const AgentChatShell: React.FC = () => {
   );
   const routeNewChatTimestamp = useMemo(
     () => parseNewChatTimestamp(searchParams.get("newChat")),
+    [searchParams],
+  );
+  const composerPrefillPayload = useMemo(
+    () => parseComposerPrefillPayload(searchParams),
     [searchParams],
   );
   const routeAgent = useMemo(
@@ -740,18 +764,44 @@ export const AgentChatShell: React.FC = () => {
           agentKey,
           preserveWorkerContext: true,
           focusComposerOnComplete: !resendAction.matches,
+          ...(composerPrefillPayload
+            ? {
+                composerDraft: composerPrefillPayload.draft,
+                selectedSkills: [{
+                  key: composerPrefillPayload.skillKey,
+                  label: composerPrefillPayload.skillKey,
+                }],
+              }
+            : {}),
         },
       }),
     );
+    if (composerPrefillPayload) {
+      const nextSearchParams = new URLSearchParams(searchParams);
+      nextSearchParams.delete("composerDraft");
+      nextSearchParams.delete("composerSkill");
+      const nextRoute = createExplicitNewChatRoute(
+        agentKey,
+        nextSearchParams,
+        routeNewChatTimestamp,
+      );
+      if (nextRoute) {
+        navigate(nextRoute, { replace: true });
+      }
+    }
     sendPreparedResend();
   }, [
     agentKey,
     chatId,
+    composerPrefillPayload,
     dispatch,
+    navigate,
     routeAgentHydrated,
     routeNewChatTimestamp,
     routeWorkerKey,
     pendingNewChatResendVersion,
+    searchParams,
+    t,
   ]);
 
   const isTimelineEmpty = useMemo(() => !state.chatId, [state.chatId]);

@@ -6,6 +6,7 @@ import type {
   Chat,
   CurrentChatActiveRun,
   AgentEvent,
+  ComposerRequiredSkill,
   WorkerRow,
 } from '@/app/state/types';
 import { createWorkerKeyFromChat } from '@/features/workers/lib/workerListFormatter';
@@ -49,6 +50,22 @@ export interface StartNewConversationDetail {
   agentKey?: unknown;
   preserveWorkerContext: unknown;
   focusComposerOnComplete: unknown;
+  composerDraft?: unknown;
+  selectedSkills?: unknown;
+}
+
+function normalizeRequiredSkills(value: unknown): ComposerRequiredSkill[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((candidate) => {
+    if (!isObjectRecord(candidate)) return [];
+    const key = String(candidate.key || '').trim();
+    const label = String(candidate.label || key).trim();
+    const identity = key.toLowerCase();
+    if (!key || !label || seen.has(identity)) return [];
+    seen.add(identity);
+    return [{ key, label }];
+  });
 }
 
 export function normalizeStartNewConversationDetail(
@@ -57,6 +74,8 @@ export function normalizeStartNewConversationDetail(
   agentKey: string;
   preserveWorkerContext: boolean;
   focusComposerOnComplete: boolean;
+  composerDraft: string;
+  selectedSkills: ComposerRequiredSkill[];
 } | null {
   if (!isObjectRecord(detail)) return null;
   if (!Object.prototype.hasOwnProperty.call(detail, 'preserveWorkerContext')) {
@@ -71,6 +90,8 @@ export function normalizeStartNewConversationDetail(
     agentKey,
     preserveWorkerContext: detail.preserveWorkerContext === true,
     focusComposerOnComplete: detail.focusComposerOnComplete === true,
+    composerDraft: String(detail.composerDraft || '').trim(),
+    selectedSkills: normalizeRequiredSkills(detail.selectedSkills),
   };
 }
 
@@ -619,6 +640,12 @@ export function useConversationActions() {
         preserveWorkerContext: detail.preserveWorkerContext,
         focusComposerOnComplete: detail.focusComposerOnComplete,
       });
+      if (detail.composerDraft) {
+        dispatch({ type: 'SET_COMPOSER_DRAFT', draft: detail.composerDraft });
+      }
+      if (detail.selectedSkills.length > 0) {
+        dispatch({ type: 'SET_SELECTED_SKILLS', skills: detail.selectedSkills });
+      }
       if (detail.agentKey) {
         dispatch({ type: 'SET_PENDING_NEW_CHAT_AGENT_KEY', agentKey: detail.agentKey });
       }
