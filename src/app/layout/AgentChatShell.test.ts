@@ -183,6 +183,7 @@ const { getAgent } = jest.requireMock(
 
 const refreshWorkerData = jest.fn(() => Promise.resolve());
 const loadAgents = jest.fn(() => Promise.resolve());
+const startNewConversation = jest.fn();
 
 const flushPromises = async () => {
   await Promise.resolve();
@@ -265,7 +266,12 @@ describe("AgentChatShell", () => {
     useAppState.mockReturnValue(createInitialState());
     useAppDispatch.mockReturnValue(jest.fn());
     useAppRuntimes.mockClear();
-    useAppRuntimes.mockReturnValue({ loadAgents, refreshWorkerData });
+    startNewConversation.mockClear();
+    useAppRuntimes.mockReturnValue({
+      loadAgents,
+      refreshWorkerData,
+      startNewConversation,
+    });
     loadAgents.mockReset();
     loadAgents.mockResolvedValue(undefined);
     refreshWorkerData.mockClear();
@@ -599,16 +605,16 @@ describe("AgentChatShell", () => {
 
     renderToStaticMarkup(React.createElement(AgentChatShell));
 
-    expect(dispatchEvent).toHaveBeenCalledWith(
+    expect(startNewConversation).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "agent:start-new-conversation",
-        detail: expect.objectContaining({
-          composerDraft: "Create a useful Skill",
-          selectedSkills: [
-            { key: "skill-creator", label: "skill-creator" },
-          ],
-        }),
+        composerDraft: "Create a useful Skill",
+        selectedSkills: [
+          { key: "skill-creator", label: "skill-creator" },
+        ],
       }),
+    );
+    expect(dispatchEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "agent:start-new-conversation" }),
     );
     expect(navigateMock).toHaveBeenCalledWith(
       "/agent/demo-agent?lang=en&newChat=1783680000000",

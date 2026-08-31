@@ -342,6 +342,37 @@ export function useConversationActions() {
     }
   }, [clearArtifactAutoCollapseTimer, clearPlanAutoCollapseTimer, conversationViewportRef, detachActiveConversationSession, dispatch, dispatchDetachActiveRun, focusComposerSoon, stateRef]);
 
+  const startNewConversation = useCallback((
+    input: StartNewConversationDetail | null | undefined,
+  ) => {
+    const detail = normalizeStartNewConversationDetail(input);
+    if (!detail) {
+      dispatch({
+        type: 'APPEND_DEBUG',
+        line: '[new conversation] ignored: missing explicit detail',
+      });
+      return;
+    }
+    if (detail.agentKey) {
+      const workerKey = `agent:${detail.agentKey}`;
+      dispatch({ type: 'SET_WORKER_SELECTION_KEY', workerKey });
+      dispatch({ type: 'SET_WORKER_PRIORITY_KEY', workerKey });
+    }
+    activateBlankConversation({
+      preserveWorkerContext: detail.preserveWorkerContext,
+      focusComposerOnComplete: detail.focusComposerOnComplete,
+    });
+    if (detail.composerDraft) {
+      dispatch({ type: 'SET_COMPOSER_DRAFT', draft: detail.composerDraft });
+    }
+    if (detail.selectedSkills.length > 0) {
+      dispatch({ type: 'SET_SELECTED_SKILLS', skills: detail.selectedSkills });
+    }
+    if (detail.agentKey) {
+      dispatch({ type: 'SET_PENDING_NEW_CHAT_AGENT_KEY', agentKey: detail.agentKey });
+    }
+  }, [activateBlankConversation, dispatch]);
+
   const loadChat = useCallback(
     async (chatId: string, options: {
       focusComposerOnComplete?: boolean;
@@ -652,41 +683,17 @@ export function useConversationActions() {
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = normalizeStartNewConversationDetail(
+      startNewConversation(
         (event as CustomEvent).detail as StartNewConversationDetail | null | undefined,
       );
-      if (!detail) {
-        dispatch({
-          type: 'APPEND_DEBUG',
-          line: '[new conversation] ignored: missing explicit detail',
-        });
-        return;
-      }
-      if (detail.agentKey) {
-        const workerKey = `agent:${detail.agentKey}`;
-        dispatch({ type: 'SET_WORKER_SELECTION_KEY', workerKey });
-        dispatch({ type: 'SET_WORKER_PRIORITY_KEY', workerKey });
-      }
-      activateBlankConversation({
-        preserveWorkerContext: detail.preserveWorkerContext,
-        focusComposerOnComplete: detail.focusComposerOnComplete,
-      });
-      if (detail.composerDraft) {
-        dispatch({ type: 'SET_COMPOSER_DRAFT', draft: detail.composerDraft });
-      }
-      if (detail.selectedSkills.length > 0) {
-        dispatch({ type: 'SET_SELECTED_SKILLS', skills: detail.selectedSkills });
-      }
-      if (detail.agentKey) {
-        dispatch({ type: 'SET_PENDING_NEW_CHAT_AGENT_KEY', agentKey: detail.agentKey });
-      }
     };
     window.addEventListener('agent:start-new-conversation', handler);
     return () => window.removeEventListener('agent:start-new-conversation', handler);
-  }, [activateBlankConversation, dispatch, stateRef]);
+  }, [startNewConversation]);
 
   return {
     activateBlankConversation,
     loadChat,
+    startNewConversation,
   };
 }
