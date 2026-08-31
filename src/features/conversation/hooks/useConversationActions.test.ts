@@ -1113,6 +1113,30 @@ describe('replayEvent tool migration', () => {
       agentKey: 'demo-agent',
       preserveWorkerContext: true,
       focusComposerOnComplete: true,
+      composerDraft: '',
+      selectedSkills: [],
+    });
+  });
+
+  it('normalizes one-shot Composer draft and required Skills', () => {
+    expect(
+      normalizeStartNewConversationDetail({
+        agentKey: 'demo-agent',
+        preserveWorkerContext: true,
+        focusComposerOnComplete: true,
+        composerDraft: '  Create a useful Skill.  ',
+        selectedSkills: [
+          { key: 'skill-creator', label: 'Skill Creator' },
+          { key: 'SKILL-CREATOR', label: 'Duplicate' },
+          { key: '', label: 'Invalid' },
+        ],
+      }),
+    ).toEqual({
+      agentKey: 'demo-agent',
+      preserveWorkerContext: true,
+      focusComposerOnComplete: true,
+      composerDraft: 'Create a useful Skill.',
+      selectedSkills: [{ key: 'skill-creator', label: 'Skill Creator' }],
     });
   });
 
@@ -1128,6 +1152,8 @@ describe('replayEvent tool migration', () => {
       agentKey: '',
       preserveWorkerContext: false,
       focusComposerOnComplete: false,
+      composerDraft: '',
+      selectedSkills: [],
     });
   });
 
