@@ -17,7 +17,7 @@ export interface UseAppRuntimesOptions {
 
 export function useAppRuntimes(
   options: UseAppRuntimesOptions = {},
-): ReturnType<typeof useWorkerData> {
+) {
   useMainChatRunActivation();
   const { handleEvent } = useConversationEventHandler();
   useConversationWsRuntime({ onAgentEvent: handleEvent });
@@ -34,5 +34,8 @@ export function useAppRuntimes(
   useVoiceRuntime();
   useVoiceChatRuntime({ onAgentEvent: handleEvent });
   useMemoryRecordsInitialization();
-  return workerData;
+  return {
+    ...workerData,
+    startNewConversation: conversationActions.startNewConversation,
+  };
 }

@@ -372,7 +372,7 @@ export const AgentChatShell: React.FC = () => {
   const routeAgentReady =
     routeAgentHydrated &&
     (!agentKey || state.workerSelectionKey === routeWorkerKey);
-  const { loadAgents } = useAppRuntimes({
+  const { loadAgents, startNewConversation } = useAppRuntimes({
     initialWorkerRefreshEnabled: false,
   });
 
@@ -747,24 +747,27 @@ export const AgentChatShell: React.FC = () => {
     }
     lastInitializedAgentKeyRef.current = routeNewChatKey;
     lastLoadedChatKeyRef.current = "";
-    window.dispatchEvent(
-      new CustomEvent("agent:start-new-conversation", {
-        detail: {
-          agentKey,
-          preserveWorkerContext: true,
-          focusComposerOnComplete: !resendAction.matches,
-          ...(composerPrefillPayload
-            ? {
-                composerDraft: composerPrefillPayload.draft,
-                selectedSkills: [{
-                  key: composerPrefillPayload.skillKey,
-                  label: composerPrefillPayload.skillKey,
-                }],
-              }
-            : {}),
-        },
-      }),
-    );
+    const startDetail = {
+      agentKey,
+      preserveWorkerContext: true,
+      focusComposerOnComplete: !resendAction.matches,
+      ...(composerPrefillPayload
+        ? {
+            composerDraft: composerPrefillPayload.draft,
+            selectedSkills: [{
+              key: composerPrefillPayload.skillKey,
+              label: composerPrefillPayload.skillKey,
+            }],
+          }
+        : {}),
+    };
+    if (composerPrefillPayload) {
+      startNewConversation(startDetail);
+    } else {
+      window.dispatchEvent(
+        new CustomEvent("agent:start-new-conversation", { detail: startDetail }),
+      );
+    }
     if (composerPrefillPayload) {
       const nextSearchParams = new URLSearchParams(searchParams);
       nextSearchParams.delete("composerDraft");
@@ -790,6 +793,7 @@ export const AgentChatShell: React.FC = () => {
     routeWorkerKey,
     pendingNewChatResendVersion,
     searchParams,
+    startNewConversation,
     t,
   ]);
 
