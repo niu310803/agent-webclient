@@ -27,6 +27,7 @@ import {
 } from '@/features/conversation/lib/conversationPayload';
 import { buildChatReplayProjection } from '@/features/conversation/lib/chatReplayProjection';
 import { dispatchDetachRunEvent, type DetachRunReason } from '@/features/runs/lib/runControlEvents';
+import { isCurrentChatTransition } from '@/features/conversation/lib/chatTransition';
 
 /**
  * Replay state — mutable structure used during synchronous event replay.
@@ -205,8 +206,9 @@ export function useConversationActions() {
     stateRef,
     querySessionsRef,
     activeQuerySessionRequestIdRef,
+    conversationViewportRef,
   } = useAppContext();
-  const loadSeqRef = useRef(0);
+  const localLoadSeqRef = useRef(0);
 
   const clearPlanAutoCollapseTimer = useCallback(() => {
     const timer = stateRef.current.planAutoCollapseTimer;
@@ -313,7 +315,12 @@ export function useConversationActions() {
     const preserveWorkerContext = Boolean(options.preserveWorkerContext);
     const focusComposerOnComplete = Boolean(options.focusComposerOnComplete);
 
-    loadSeqRef.current += 1;
+    localLoadSeqRef.current = Math.max(
+      localLoadSeqRef.current + 1,
+      stateRef.current.chatLoadSeq + 1,
+    );
+    conversationViewportRef?.current?.captureCurrent();
+    dispatch({ type: 'CLEAR_CHAT_TRANSITION' });
     dispatchDetachActiveRun('new_conversation');
     detachActiveConversationSession();
     clearArtifactAutoCollapseTimer();
@@ -333,7 +340,7 @@ export function useConversationActions() {
     if (focusComposerOnComplete) {
       focusComposerSoon();
     }
-  }, [clearArtifactAutoCollapseTimer, clearPlanAutoCollapseTimer, detachActiveConversationSession, dispatch, dispatchDetachActiveRun, focusComposerSoon]);
+  }, [clearArtifactAutoCollapseTimer, clearPlanAutoCollapseTimer, conversationViewportRef, detachActiveConversationSession, dispatch, dispatchDetachActiveRun, focusComposerSoon, stateRef]);
 
   const loadChat = useCallback(
     async (chatId: string, options: {
@@ -370,16 +377,41 @@ export function useConversationActions() {
         return;
       }
 
-      const seq = ++loadSeqRef.current;
+      conversationViewportRef?.current?.captureCurrent();
+      const seq = Math.max(
+        localLoadSeqRef.current + 1,
+        stateRef.current.chatLoadSeq + 1,
+      );
+      localLoadSeqRef.current = seq;
       const loadingCurrentChat = Boolean(currentChatId && currentChatId === chatId);
+      dispatch({
+        type: 'BEGIN_CHAT_TRANSITION',
+        transition: {
+          seq,
+          sourceChatId: currentChatId,
+          targetChatId: chatId,
+          phase: 'loading',
+          kind: forceReload && loadingCurrentChat
+            ? 'same-chat-reload'
+            : currentChatId
+              ? 'history-switch'
+              : 'initial-load',
+          focusComposerOnReady: focusComposerOnComplete,
+          error: '',
+        },
+      });
+      const isLoadCurrent = () => {
+        const latestState = stateRef.current;
+        if (latestState.chatLoadSeq >= seq) {
+          return isCurrentChatTransition(latestState, seq, chatId);
+        }
+        // Some isolated consumers provide a read-only state ref. Runtime
+        // AppProvider always takes the global branch above.
+        return localLoadSeqRef.current === seq;
+      };
       if (!loadingCurrentChat) {
         dispatchDetachActiveRun('chat_switch', chatId);
         detachActiveConversationSession();
-      }
-
-      if (!loadingCurrentChat && currentChatId && currentChatId !== chatId) {
-        dispatch({ type: 'CLEAR_EVENTS' });
-        dispatch({ type: 'CLEAR_CONVERSATION_OVERVIEW' });
       }
 
       const currentChat = stateRef.current.chats.find((chat) => String(chat?.chatId || '') === String(chatId));
@@ -394,8 +426,6 @@ export function useConversationActions() {
         dispatch({ type: 'SET_WORKER_RELATED_CHATS', chats: workerChats });
       }
 
-      dispatch({ type: 'SET_STREAMING', streaming: true });
-
       try {
         let response: Awaited<ReturnType<typeof getChat>> | null = null;
         let lastLoadError: unknown = null;
@@ -406,7 +436,7 @@ export function useConversationActions() {
             break;
           } catch (error) {
             lastLoadError = error;
-            if (seq !== loadSeqRef.current || attempt >= LOAD_CHAT_RETRY_DELAYS_MS.length) {
+            if (!isLoadCurrent() || attempt >= LOAD_CHAT_RETRY_DELAYS_MS.length) {
               break;
             }
             await waitForLoadChatRetry(LOAD_CHAT_RETRY_DELAYS_MS[attempt]);
@@ -415,7 +445,7 @@ export function useConversationActions() {
         if (!response) {
           throw lastLoadError instanceof Error ? lastLoadError : new Error(String(lastLoadError || 'failed to load chat'));
         }
-        if (seq !== loadSeqRef.current) return;
+        if (!isLoadCurrent()) return;
 
         const chatData = response.data as Record<string, unknown>;
         const usageSnapshot = buildLoadedChatUsageSnapshot(chatId, chatData);
@@ -470,6 +500,13 @@ export function useConversationActions() {
             line: '[time_contract_violation] ignored malformed /api/chat replay event timestamp',
           });
         }
+        dispatch({
+          type: 'ADVANCE_CHAT_TRANSITION',
+          seq,
+          targetChatId: chatId,
+          phase: 'applying',
+        });
+        if (!isLoadCurrent()) return;
         flushSync(() => {
           applyLoadedChatState(chatId);
 
@@ -584,22 +621,15 @@ export function useConversationActions() {
             persist: false,
           });
         }
-        if (focusComposerOnComplete) {
-          focusComposerSoon();
-        }
-        if (!activeRunId) {
-          dispatch({ type: 'SET_STREAMING', streaming: false });
-        }
       } catch (error) {
+        if (!isLoadCurrent()) return;
         dispatch({ type: 'APPEND_DEBUG', line: `[loadChat error] ${(error as Error).message}` });
-        if (!loadingCurrentChat) {
-          dispatch({ type: 'SET_CHAT_ID', chatId });
-          dispatch({ type: 'RESET_CONVERSATION' });
-        }
-        dispatch({ type: 'SET_STREAMING', streaming: false });
-        if (focusComposerOnComplete) {
-          focusComposerSoon();
-        }
+        dispatch({
+          type: 'FAIL_CHAT_TRANSITION',
+          seq,
+          targetChatId: chatId,
+          error: (error as Error).message || String(error),
+        });
         if (options.throwOnError) {
           throw error;
         }
@@ -609,6 +639,7 @@ export function useConversationActions() {
       clearArtifactAutoCollapseTimer,
       clearPlanAutoCollapseTimer,
       activeQuerySessionRequestIdRef,
+      conversationViewportRef,
       detachActiveConversationSession,
       dispatchDetachActiveRun,
       dispatch,

@@ -175,6 +175,11 @@ describe("useMessageActions temporary pin", () => {
       type: "SET_TEMPORARY_PINNED_AGENT_KEY",
       agentKey: "",
     });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "REQUEST_CONVERSATION_SCROLL",
+      chatId: "",
+      reason: "local-send",
+    });
     expect(startQuery).toHaveBeenCalledWith(
       expect.objectContaining({
         owner: { kind: "agent", agentKey: "agent-coder" },
@@ -380,6 +385,41 @@ describe("useMessageActions temporary pin", () => {
     expect(dispatch).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "SET_TIMELINE_NODE" }),
     );
+  });
+
+  it("blocks every direct query entry while a chat transition is active", async () => {
+    const state = createInitialState();
+    state.chatId = "chat_old";
+    state.chatTransition = {
+      seq: 1,
+      sourceChatId: "chat_old",
+      targetChatId: "chat_new",
+      phase: "loading",
+      kind: "history-switch",
+      focusComposerOnReady: false,
+      error: "",
+    };
+    const dispatch = jest.fn();
+    useAppContext.mockReturnValue({
+      state,
+      dispatch,
+      stateRef: { current: state },
+      querySessionsRef: { current: new Map() },
+      chatQuerySessionIndexRef: { current: new Map() },
+      activeQuerySessionRequestIdRef: { current: "" },
+    });
+
+    let actions: ReturnType<typeof useMessageActions> | null = null;
+    const Harness = () => {
+      actions = useMessageActions({ onAgentEvent: jest.fn() });
+      return null;
+    };
+    renderToStaticMarkup(React.createElement(Harness));
+
+    await actions?.sendMessage("must not send");
+
+    expect(startQuery).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it("sends the KBASE editing snapshot and clears it on unsupported without retrying", async () => {

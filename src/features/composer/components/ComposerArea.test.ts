@@ -349,6 +349,33 @@ describe("ComposerArea", () => {
     expect(useComposerWonders.mock.calls[0][0].showWonders).toBe(false);
   });
 
+  it("disables the composer and hides stale awaiting UI during a chat transition", () => {
+    const state = createInitialState();
+    state.chatTransition = {
+      seq: 1,
+      sourceChatId: "chat_old",
+      targetChatId: "chat_new",
+      phase: "loading",
+      kind: "history-switch",
+      focusComposerOnReady: false,
+      error: "",
+    };
+    state.activeAwaiting = {
+      mode: "approval",
+      awaitingId: "await_old",
+    } as never;
+    mockComposerAwaitingState.isAwaitingActive = true;
+    useAppState.mockReturnValue(state);
+    useAppContext.mockReturnValue({ stateRef: { current: state } });
+
+    const html = renderToStaticMarkup(React.createElement(ComposerArea));
+
+    expect(html).not.toContain("awaiting-shell");
+    expect(mockComposerInputProps[0].disabled).toBe(true);
+    expect(mockComposerActionsProps[0].interactionDisabled).toBe(true);
+    expect(mockComposerActionsProps[0].sendDisabled).toBe(true);
+  });
+
   it("keeps runtime permission controls visible while awaiting approval", () => {
     const state = createInitialState();
     mockComposerAwaitingState.isAwaitingActive = true;

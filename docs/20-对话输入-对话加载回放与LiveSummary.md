@@ -18,6 +18,14 @@
 
 `useChatReadSync` 独立同步已读状态，worker 选择逻辑位于 workers 模块。`/agent/:agentKey?newChat=` 的首条 query 仅在收到稳定 `chatId` 后将路由 replace 为 `?chatId=`；这是同一 live query 的一次性 session promotion，不是历史对话打开。`AgentChatShell` 消费 promotion 后只收敛 URL 和选中态，不派发 `agent:load-chat`；`useConversationActions.loadChat()` 也会在目标 chat 已由活跃 live query 消费时直接返回，不拉取 `/api/chat`、不 reset timeline、也不派发 attach。
 
+### Chat 切换事务
+
+历史切换由 `AppState.chatTransition` 表示，阶段固定为 `loading → applying → restoring → ready`，失败进入 `error`。事务身份使用全局递增的 `chatLoadSeq`，所有请求结果、重试、原子应用和滚动恢复都必须同时匹配 `seq + targetChatId`；较早的 A→B 请求即使晚于 A→C 返回，也不能再修改可见状态。
+
+切换开始时，`useConversationActions` 先通过 AppContext 中的 viewport handle 同步保存来源 Chat 阅读位置，再创建事务。请求期间保留来源 timeline，不再用 `streaming=true` 模拟历史加载，也不提前清空事件；`ConversationStage` 根据路由目标和事务阶段覆盖骨架层，因此路由变化首帧不会闪现旧 Chat。响应成功后，Chat ID、reset 和 replay 投影在同一个 `flushSync` 批次内应用，随后由时间线完成位置恢复并推进 `ready`。失败时来源数据继续保留在错误层后方，重试创建新事务，不提交空目标会话。
+
+`forceReload` 使用 `same-chat-reload` 并执行同样的保存与恢复。新建空白对话会先保存来源位置、取消当前事务，再 reset；新 Chat 获得 canonical `chatId` 的 session promotion 仍绕过历史加载事务。事务处于加载、应用、恢复或错误阶段时，Composer 及旧的 awaiting、plan、frontend tool 交互均不可提交；需要聚焦 Composer 的切换只在恢复完成后派发，并使用 `preventScroll`。
+
 导出与公开分享不复用上述 replay/live 状态。Markdown 直接请求 Agent Platform；WebClient HTML 导出并行请求 Platform Snapshot 与同源模板后用 Blob parts 组装，Desktop 分享则由常驻 Worker 请求 Snapshot 与 WebClient 模板。公开 `/share/` 由 Tunnel 直接返回已生成的 HTML 主文档。所有路径都不 attach active run，也不从当前 renderer timeline 重建快照。
 
 当前对象历史与全局历史是两个独立入口。Copilot 顶栏、`/history` Composer 命令和全局快捷操作通过 Command Overlay 打开当前 Agent/Team 的历史抽屉：Agent 历史使用 `GET /api/chats?agentKey=...`，选择记录后派发 `agent:load-chat` 并在当前壳层内切换。全局聊天历史独立使用 `/history`，以无参数 `GET /api/chats` 获取全量摘要，并在前端按关键词、`updatedAt` 自然日范围和 Agent/Team 归属组合筛选；Agent-owned 记录只输出 `/agent/:agentKey?chatId=...`。Overview、Debug、Planning、Source、Artifact、Reference 的 URL 定位字段不会传给后端；它们只调用 `GET /api/chat?chatId=...`，再从同一 replay 投影按各自稳定 ID 定位。缺少或无效 ID 显示无效目标，不回退到其他节点或最新 Run。
@@ -37,6 +45,7 @@ Agent Copilot 使用相同的稳定对话身份规则：新对话收到稳定 `c
 - `../src/features/conversation/lib/conversationReplay.ts`
 - `../src/features/conversation/hooks/useConversationEventHandler.ts`
 - `../src/features/conversation/lib/conversationSession.ts`
+- `../src/features/conversation/lib/chatTransition.ts`
 - `../src/features/chats/lib/chatSummary.ts`
 - `../src/features/chats/lib/chatSummaryLive.ts`
 - `../src/features/runs/lib/runAgentIdentity.ts`

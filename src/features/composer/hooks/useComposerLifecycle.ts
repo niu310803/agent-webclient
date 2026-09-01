@@ -94,7 +94,9 @@ export function useComposerLifecycle({
         return;
       }
       setInputValue((current) => appendDesktopReviewDraft(current, action.text));
-      window.requestAnimationFrame(() => textareaRef.current?.focus());
+      window.requestAnimationFrame(() =>
+        textareaRef.current?.focus({ preventScroll: true }),
+      );
       emitComposerDraftResult(requestId, true);
     };
     window.addEventListener(DESKTOP_COMPOSER_REVIEW_DRAFT_EVENT, onInsertReviewDraft);
@@ -105,7 +107,7 @@ export function useComposerLifecycle({
   }, [chatId, setInputValue, stageReviewAttachment, textareaRef]);
 
   useEffect(() => {
-    textareaRef.current?.focus();
+    textareaRef.current?.focus({ preventScroll: true });
   }, [chatId, textareaRef]);
 
   useEffect(() => {
@@ -119,7 +121,7 @@ export function useComposerLifecycle({
       window.requestAnimationFrame(() => {
         const el = textareaRef.current?.resizableTextArea?.textArea;
         if (!el) return;
-        el.focus();
+        el.focus({ preventScroll: true });
         const caret = el.value.length;
         el.setSelectionRange(caret, caret);
       });

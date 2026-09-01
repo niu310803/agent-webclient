@@ -4,6 +4,7 @@ import { ComposerArea } from "@/features/composer/components/ComposerArea";
 import { PlanPanel } from "@/features/plan/components/PlanPanel";
 import { FrontendToolContainer } from "@/features/tools/components/FrontendToolContainer";
 import { ArtifactPanel } from "@/features/artifacts/components/ArtifactPanel";
+import { isChatTransitionBlockingInteractions } from "@/features/conversation/lib/chatTransition";
 
 interface BottomDockProps {
 	mode?: "desktop" | "copilot";
@@ -26,20 +27,25 @@ const BOTTOM_DOCK_STACK_CLASS_BY_MODE = {
 export const BottomDock: React.FC<BottomDockProps> = ({ mode = "desktop" }) => {
 	const state = useAppState();
 	const isCopilot = mode === "copilot";
+	const transitionBlocking = isChatTransitionBlockingInteractions(
+		state.chatTransition,
+	);
 
 	return (
 		<div className={BOTTOM_DOCK_CLASS_BY_MODE[mode]}>
 			<div className={BOTTOM_DOCK_INNER_CLASS_BY_MODE[mode]}>
 				<div className={BOTTOM_DOCK_STACK_CLASS_BY_MODE[mode]}>
-					<div className="bottom-dock-artifact-rail">
-						<ArtifactPanel />
-					</div>
-					{state.plan && (
+					{!transitionBlocking && (
+						<div className="bottom-dock-artifact-rail">
+							<ArtifactPanel />
+						</div>
+					)}
+					{!transitionBlocking && state.plan && (
 						<div className="bottom-dock-plan-rail">
 							<PlanPanel />
 						</div>
 					)}
-					{state.activeFrontendTool && (
+					{!transitionBlocking && state.activeFrontendTool && (
 						<div className="bottom-dock-tool-rail">
 							<FrontendToolContainer />
 						</div>

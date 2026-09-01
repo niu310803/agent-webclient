@@ -81,7 +81,7 @@ export const AppShell: React.FC = () => {
           >
             <TopNav />
             <LeftSidebar />
-            <ConversationStage />
+            <ConversationStage surfaceMode="main" />
             <RightSidebar />
             <BottomDock />
             {effectiveTerminalDockOpen && currentWorker ? (

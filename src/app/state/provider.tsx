@@ -21,6 +21,14 @@ import { isGatewayBackendMode } from "@/shared/config/backendMode";
 import { persistComposerDrafts } from "@/shared/data/auth/composerDraftPersistence";
 import { dataQueryCache } from "@/shared/data/query/serverState";
 import { destroyStandaloneWsClient } from "@/features/transport/lib/standaloneWsClient";
+import {
+	clearConversationScrollBookmarks,
+	deleteConversationScrollBookmarks,
+} from "@/features/timeline/lib/conversationScrollBookmark";
+
+export interface ConversationViewportHandle {
+	captureCurrent(): void;
+}
 
 export interface AppContextValue {
 	state: AppState;
@@ -29,6 +37,7 @@ export interface AppContextValue {
 	querySessionsRef: React.MutableRefObject<Map<string, LiveQuerySession>>;
 	chatQuerySessionIndexRef: React.MutableRefObject<Map<string, string>>;
 	activeQuerySessionRequestIdRef: React.MutableRefObject<string>;
+	conversationViewportRef: React.MutableRefObject<ConversationViewportHandle | null>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -56,6 +65,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 	const querySessionsRef = useRef(new Map<string, LiveQuerySession>());
 	const chatQuerySessionIndexRef = useRef(new Map<string, string>());
 	const activeQuerySessionRequestIdRef = useRef("");
+	const conversationViewportRef = useRef<ConversationViewportHandle | null>(null);
 	stateRef.current = state;
 
 	const debouncedSetStreamingRef = useRef(
@@ -75,6 +85,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 	}, []);
 
 	const dispatch = useCallback<React.Dispatch<AppAction>>((action) => {
+		if (action.type === "CHAT_DELETED") {
+			deleteConversationScrollBookmarks(action.chatId);
+		}
 		if (
 			action.type === "SHOW_COMMAND_STATUS_OVERLAY" ||
 			action.type === "HIDE_COMMAND_STATUS_OVERLAY" ||
@@ -120,6 +133,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 			querySessionsRef,
 			chatQuerySessionIndexRef,
 			activeQuerySessionRequestIdRef,
+			conversationViewportRef,
 		}),
 		[state, dispatch],
 	);
@@ -184,6 +198,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 		};
 		const clearIdentityState = () => {
 			persistCurrentDraft();
+			clearConversationScrollBookmarks();
 			dataQueryCache.clear();
 			destroyStandaloneWsClient();
 			window.dispatchEvent(new CustomEvent("agent:reset-event-cache"));

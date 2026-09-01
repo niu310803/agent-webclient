@@ -41,6 +41,7 @@ import {
   readRequestQueryText,
 } from "@/shared/utils/eventFieldReaders";
 import { toText } from "@/shared/utils/eventUtils";
+import { isChatTransitionBlockingInteractions } from "@/features/conversation/lib/chatTransition";
 
 interface SendMessageEventDetail {
   message?: unknown;
@@ -281,6 +282,11 @@ export function useMessageActions(options: { onAgentEvent: AgentEventSink }) {
         return [normalizedKey];
       });
       if (!rawMessage && normalizedReferences.length === 0) return;
+      if (
+        isChatTransitionBlockingInteractions(stateRef.current.chatTransition)
+      ) {
+        return;
+      }
 
       /* ── Parallel-query guard ── */
       const currentActiveReqId = String(
@@ -453,6 +459,11 @@ export function useMessageActions(options: { onAgentEvent: AgentEventSink }) {
         },
       });
       dispatch({ type: "APPEND_TIMELINE_ORDER", id: userNodeId });
+      dispatch({
+        type: "REQUEST_CONVERSATION_SCROLL",
+        chatId,
+        reason: "local-send",
+      });
 
       getVoiceRuntime()?.resetVoiceRuntime();
 

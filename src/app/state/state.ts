@@ -110,6 +110,8 @@ export function createInitialState(): AppState {
 		workerRelatedChats: [],
 		workerChatPanelCollapsed: true,
 		chatLoadSeq: 0,
+		chatTransition: null,
+		conversationScrollRequest: null,
 		memoryConsoleTab: createDefaultMemoryConsoleTab(),
 		memoryInfoLoading: false,
 		memoryInfoError: "",

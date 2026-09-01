@@ -59,6 +59,7 @@ import type {
 } from "@/shared/data";
 import { useI18n } from "@/shared/i18n";
 import { resolveMainChatRuntime } from "@/features/runs/lib/runRuntimeState";
+import { isChatTransitionBlockingInteractions } from "@/features/conversation/lib/chatTransition";
 import { UiButton } from "@/shared/ui/UiButton";
 import { MaterialIcon } from "@/shared/icons/material";
 import { useHostRequiredSkills } from "@/features/composer/components/HostRequiredSkillsContext";
@@ -195,6 +196,9 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     querySessionsRef,
   );
   const isMainChatRunning = mainChatRuntime.running;
+  const chatTransitionBlocking = isChatTransitionBlockingInteractions(
+    state.chatTransition,
+  );
   const planningModeAvailable =
     currentWorker?.type === "agent" &&
     String(currentWorker.raw?.mode || "")
@@ -619,6 +623,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
       speechState === "error" ||
       speechState === "unsupported");
   const sendDisabled =
+    chatTransitionBlocking ||
     isFrontendActive ||
     isAwaitingActive ||
     hasUploadingAttachments ||
@@ -693,7 +698,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     ],
   );
 
-  if (isAwaitingActive && state.activeAwaiting) {
+  if (!chatTransitionBlocking && isAwaitingActive && state.activeAwaiting) {
     if (state.activeAwaiting.mode === "form") {
       return (
         <AwaitingShell>
@@ -866,6 +871,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
                 <ComposerInput
                   isVoiceMode={isVoiceMode}
                   isFrontendActive={isFrontendActive}
+                  disabled={chatTransitionBlocking}
                   isTimelineEmpty={isTimelineEmpty}
                   inputValue={inputValue}
                   placeholder={sampledGreeting}
@@ -911,6 +917,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
                   isFrontendActive={isFrontendActive}
                   isVoiceMode={isVoiceMode}
                   isStreaming={isMainChatRunning}
+                  interactionDisabled={chatTransitionBlocking}
                   canCaptureDesktopScreenshot={canCaptureDesktopScreenshot}
                   isCapturingDesktopScreenshot={isCapturingDesktopScreenshot}
                   modelOverride={modelOverride}

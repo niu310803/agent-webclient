@@ -1,10 +1,14 @@
 import React, {
   useRef,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useCallback,
   useState,
 } from "react";
+
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 import {
   useOptionalAppContext,
   useAppState,
@@ -47,6 +51,7 @@ import type { InputRef } from "antd";
 import {
   AIRunEventTypeEnum,
   type Agent,
+  type ConversationSurfaceMode,
   type TimelineNode,
   type WorkerRow,
 } from "@/app/state/types";
@@ -54,7 +59,20 @@ import { LogoLoading } from "@/shared/components/logo-loading";
 import { resolveMainChatRuntime } from "@/features/runs/lib/runRuntimeState";
 import { DotLoading } from "@/shared/components/dot-loading";
 import { Virtuoso } from "react-virtuoso";
-import type { VirtuosoHandle, ListRange } from "react-virtuoso";
+import type {
+  ItemProps,
+  VirtuosoHandle,
+  ListRange,
+  StateSnapshot,
+} from "react-virtuoso";
+import {
+  createConversationDataSignature,
+  createConversationLayoutSignature,
+  getConversationScrollBookmark,
+  resolveConversationRestoreIndex,
+  setConversationScrollBookmark,
+  type ConversationScrollBookmark,
+} from "@/features/timeline/lib/conversationScrollBookmark";
 
 type CurrentWorkerSummary = ReturnType<typeof resolveCurrentWorkerSummary>;
 
@@ -75,6 +93,16 @@ type VirtualListItem =
       key: string;
       item: Extract<TimelineDisplayItem, { kind: "standalone" }>;
     };
+
+const ConversationVirtualItem: React.FC<ItemProps<VirtualListItem>> = ({
+  children,
+  item,
+  ...props
+}) => (
+  <div {...props} data-conversation-item-key={item.key}>
+    {children}
+  </div>
+);
 
 const QUERY_ANCHOR_MIN_SCROLL_WIDTH = 960;
 
@@ -109,13 +137,21 @@ const TIMELINE_AGENT_SWITCHER_OPTION_NAME_CLASS_NAME =
 const TIMELINE_AGENT_SWITCHER_OPTION_ROLE_CLASS_NAME =
   "tw:min-w-0 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap tw:text-xs tw:font-medium tw:text-ink-muted";
 const CONVERSATION_STAGE_CLASS_NAME =
-  "conversation-stage tw:min-h-0 tw:flex-1 tw:overflow-hidden tw:animate-fade-slide-in";
+  "conversation-stage tw:relative tw:min-h-0 tw:flex-1 tw:overflow-hidden tw:animate-fade-slide-in";
 const CONVERSATION_STAGE_SCROLL_TO_BOTTOM_CLASS_NAME =
   "conversation-stage-scroll-to-bottom tw:rounded-full tw:pointer-events-auto";
 const VIRTUOSO_CLASS_NAME = [
   "conversation-stage-virtuoso tw:h-full tw:bg-transparent",
   SCROLLBAR_THIN_CLASS_NAME,
 ].join(" ");
+const CONVERSATION_TRANSITION_OVERLAY_CLASS_NAME =
+  "conversation-transition-overlay tw:absolute tw:inset-0 tw:z-20 tw:grid tw:place-items-center tw:overflow-hidden tw:bg-bg-base tw:px-6";
+const CONVERSATION_TRANSITION_SKELETON_CLASS_NAME =
+  "conversation-transition-skeleton tw:flex tw:w-full tw:max-w-[760px] tw:flex-col tw:gap-5";
+const CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME =
+  "tw:h-16 tw:animate-pulse tw:rounded-xl tw:bg-[color-mix(in_srgb,var(--line-soft)_58%,transparent)]";
+const CONVERSATION_TRANSITION_ERROR_CLASS_NAME =
+  "conversation-transition-error tw:flex tw:max-w-[420px] tw:flex-col tw:items-center tw:gap-3 tw:text-center";
 const TIMELINE_STACK_CLASS_NAME =
   "timeline-stack tw:relative tw:m-auto tw:min-h-full tw:w-full tw:max-w-[800px]";
 const TIMELINE_STACK_EMPTY_CLASS_NAME =
@@ -657,12 +693,126 @@ export const TimelineAgentSwitcher: React.FC<{
   );
 };
 
+function buildVirtualItemsDataSignature(
+  items: readonly VirtualListItem[],
+  expandedTaskGroups: Record<string, boolean>,
+  expandedRunCollapses: Record<string, boolean>,
+): string {
+  const itemRevisions = items.map((item) => {
+    let revision = "";
+    try {
+      revision = JSON.stringify(item.item);
+    } catch {
+      revision = item.key;
+    }
+    return [
+      item.key,
+      revision,
+      Boolean(expandedTaskGroups[item.key]),
+      Boolean(expandedRunCollapses[item.key]),
+    ];
+  });
+  return createConversationDataSignature([
+    ...itemRevisions,
+    Object.entries(expandedTaskGroups).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+    Object.entries(expandedRunCollapses).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  ]);
+}
+
+function readRootFontSize(): string {
+  if (typeof document === "undefined" || typeof getComputedStyle !== "function") {
+    return "";
+  }
+  return getComputedStyle(document.documentElement).fontSize;
+}
+
+function findVisibleConversationAnchor(
+  scroller: HTMLElement,
+  itemKeys: readonly string[],
+): { key: string; index: number; offset: number } | null {
+  const viewportRect = scroller.getBoundingClientRect();
+  const elements = scroller.querySelectorAll<HTMLElement>(
+    "[data-conversation-item-key]",
+  );
+  for (const element of elements) {
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom <= viewportRect.top || rect.top >= viewportRect.bottom) {
+      continue;
+    }
+    const key = String(element.dataset.conversationItemKey || "").trim();
+    const index = itemKeys.indexOf(key);
+    if (key && index >= 0) {
+      return { key, index, offset: rect.top - viewportRect.top };
+    }
+  }
+  return null;
+}
+
+function findConversationItemElement(
+  scroller: HTMLElement,
+  itemKey: string,
+): HTMLElement | null {
+  const elements = scroller.querySelectorAll<HTMLElement>(
+    "[data-conversation-item-key]",
+  );
+  for (const element of elements) {
+    if (element.dataset.conversationItemKey === itemKey) return element;
+  }
+  return null;
+}
+
+function ConversationTransitionOverlay({
+  error,
+  onRetry,
+  retryLabel,
+}: {
+  error: string;
+  onRetry: () => void;
+  retryLabel: string;
+}) {
+  return (
+    <div
+      className={CONVERSATION_TRANSITION_OVERLAY_CLASS_NAME}
+      aria-busy={!error}
+      role={error ? "alert" : "status"}
+    >
+      {error ? (
+        <div className={CONVERSATION_TRANSITION_ERROR_CLASS_NAME}>
+          <MaterialIcon name="error" />
+          <strong>{error}</strong>
+          <UiButton size="sm" onClick={onRetry}>
+            {retryLabel}
+          </UiButton>
+        </div>
+      ) : (
+        <div
+          className={CONVERSATION_TRANSITION_SKELETON_CLASS_NAME}
+          aria-hidden="true"
+        >
+          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-2/3`} />
+          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-5/6`} />
+          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-3/4`} />
+          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-1/2`} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ConversationStageProps {
+  surfaceMode: ConversationSurfaceMode;
+  expectedChatId?: string;
   showEmptyState?: boolean;
   onResendInNewChat?: (message: string) => void;
 }
 
 export const ConversationStage: React.FC<ConversationStageProps> = ({
+  surfaceMode,
+  expectedChatId,
   showEmptyState = true,
   onResendInNewChat,
 }) => {
@@ -671,6 +821,7 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   const dispatch = useAppDispatch();
   const appContext = useOptionalAppContext();
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const scrollerRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
   const statusTimerRef = useRef<Map<string, number>>(new Map());
@@ -685,6 +836,16 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     Record<string, boolean>
   >({});
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const isAtBottomRef = useRef(true);
+  const restoringRef = useRef(false);
+  const rangeRef = useRef<ListRange>({ startIndex: 0, endIndex: 0 });
+  const saveTimerRef = useRef<number | null>(null);
+  const restoreTimeoutRef = useRef<number | null>(null);
+  const restoredTransitionSeqRef = useRef(0);
+  const lastScrollRequestIdRef = useRef(
+    state.conversationScrollRequest?.id || 0,
+  );
   const currentWorker = resolveCurrentWorkerSummary(state);
   const isMainChatRunning = appContext
     ? resolveMainChatRuntime(
@@ -694,17 +855,6 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       ).running
     : false;
 
-  useEffect(() => {
-    return () => {
-      setIsAtBottom(true);
-    };
-  }, [state.chatId]);
-
-  useEffect(() => {
-    if (isMainChatRunning) {
-      handleScrollToBottomClick();
-    }
-  }, [isMainChatRunning]);
   const timelineAgentOptions = useMemo(
     () =>
       buildTimelineAgentOptions({
@@ -785,6 +935,69 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       return { kind: "standalone", key: item.key, item };
     });
   }, [displayItems]);
+
+  const virtualItemKeys = useMemo(
+    () => virtualItems.map((item) => item.key),
+    [virtualItems],
+  );
+  const dataSignature = useMemo(
+    () =>
+      buildVirtualItemsDataSignature(
+        virtualItems,
+        expandedTaskGroups,
+        expandedRunCollapses,
+      ),
+    [expandedRunCollapses, expandedTaskGroups, virtualItems],
+  );
+  const layoutSignature = useMemo(
+    () =>
+      createConversationLayoutSignature({
+        surfaceMode,
+        containerWidth,
+        themeMode: state.themeMode,
+        rootFontSize: readRootFontSize(),
+      }),
+    [containerWidth, state.themeMode, surfaceMode],
+  );
+  const currentBookmark = useMemo(
+    () =>
+      state.chatId
+        ? getConversationScrollBookmark({ surfaceMode, chatId: state.chatId })
+        : null,
+    [dataSignature, layoutSignature, state.chatId, surfaceMode],
+  );
+  const transition = state.chatTransition;
+  const transitionPending = Boolean(
+    transition &&
+      (transition.phase === "loading" ||
+        transition.phase === "applying" ||
+        transition.phase === "restoring"),
+  );
+  const normalizedExpectedChatId = String(expectedChatId || "").trim();
+  const routeTargetMismatch = Boolean(
+    normalizedExpectedChatId && normalizedExpectedChatId !== state.chatId,
+  );
+  const transitionError = transition?.phase === "error" ? transition.error : "";
+  const transitionOverlayVisible =
+    routeTargetMismatch || transitionPending || Boolean(transitionError);
+  const restorationReady =
+    !transitionOverlayVisible &&
+    (!transition ||
+      transition.phase === "ready" ||
+      transition.targetChatId !== state.chatId);
+  const matchingSnapshot = Boolean(
+    currentBookmark?.snapshot &&
+      currentBookmark.dataSignature === dataSignature &&
+      currentBookmark.layoutSignature === layoutSignature,
+  )
+    ? currentBookmark?.snapshot
+    : undefined;
+  const virtuosoInstanceKey = `${surfaceMode}:${state.chatId}:${
+    transition?.kind === "same-chat-reload" &&
+    transition.targetChatId === state.chatId
+      ? transition.seq
+      : 0
+  }`;
 
   const flashActionStatus = useCallback((key: string, text: string) => {
     const existing = statusTimerRef.current.get(key);
@@ -1062,12 +1275,101 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     ],
   );
 
+  const captureCurrentBookmark = useCallback(() => {
+    const chatId = String(state.chatId || "").trim();
+    if (!chatId || restoringRef.current) return;
+    const fallbackIndex = Math.max(
+      0,
+      Math.min(virtualItemKeys.length - 1, rangeRef.current.startIndex || 0),
+    );
+    const visibleAnchor = scrollerRef.current
+      ? findVisibleConversationAnchor(scrollerRef.current, virtualItemKeys)
+      : null;
+    const anchorIndex = visibleAnchor?.index ?? fallbackIndex;
+    const anchorItemKey =
+      visibleAnchor?.key || virtualItemKeys[anchorIndex] || null;
+    const bookmarkBase: ConversationScrollBookmark = {
+      anchorItemKey,
+      anchorIndex,
+      previousItemKey:
+        anchorIndex > 0 ? virtualItemKeys[anchorIndex - 1] || null : null,
+      nextItemKey: virtualItemKeys[anchorIndex + 1] || null,
+      anchorOffset: visibleAnchor?.offset || 0,
+      atBottom: isAtBottomRef.current,
+      dataSignature,
+      layoutSignature,
+      savedAt: Date.now(),
+    };
+    const commit = (snapshot?: StateSnapshot) => {
+      setConversationScrollBookmark(
+        { surfaceMode, chatId },
+        { ...bookmarkBase, ...(snapshot ? { snapshot } : {}) },
+      );
+    };
+    if (virtuosoRef.current) {
+      virtuosoRef.current.getState((snapshot) => commit(snapshot));
+    } else {
+      commit();
+    }
+  }, [dataSignature, layoutSignature, state.chatId, surfaceMode, virtualItemKeys]);
+
+  const captureCurrentBookmarkRef = useRef(captureCurrentBookmark);
+  captureCurrentBookmarkRef.current = captureCurrentBookmark;
+
+  useIsomorphicLayoutEffect(() => {
+    const viewportHandle = appContext?.conversationViewportRef;
+    if (!viewportHandle) return;
+    const handle = {
+      captureCurrent: () => captureCurrentBookmarkRef.current(),
+    };
+    viewportHandle.current = handle;
+    return () => {
+      captureCurrentBookmarkRef.current();
+      if (viewportHandle.current === handle) {
+        viewportHandle.current = null;
+      }
+    };
+  }, [appContext?.conversationViewportRef]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        captureCurrentBookmarkRef.current();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  const handleIsScrolling = useCallback((scrolling: boolean) => {
+    if (scrolling) {
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      return;
+    }
+    if (restoringRef.current) return;
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      captureCurrentBookmarkRef.current();
+    }, 150);
+  }, []);
+
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
+    if (restoringRef.current) return;
+    isAtBottomRef.current = atBottom;
     setIsAtBottom(atBottom);
   }, []);
 
   const handleRangeChanged = useCallback(
     (range: ListRange) => {
+      rangeRef.current = range;
       if (!queryAnchorsEnabled) return;
       let activeAnchorId = "";
       for (let i = range.startIndex; i >= 0; i--) {
@@ -1104,17 +1406,199 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   );
 
   const handleScrollToBottomClick = () => {
+    dispatch({
+      type: "REQUEST_CONVERSATION_SCROLL",
+      chatId: state.chatId,
+      reason: "user-click",
+    });
+  };
+
+  useEffect(() => {
+    const request = state.conversationScrollRequest;
+    if (!request || request.id <= lastScrollRequestIdRef.current) return;
+    lastScrollRequestIdRef.current = request.id;
+    if (
+      request.target !== "bottom" ||
+      request.chatId !== state.chatId ||
+      !restorationReady
+    ) {
+      return;
+    }
+    isAtBottomRef.current = true;
+    setIsAtBottom(true);
     virtuosoRef.current?.scrollToIndex({
       index: "LAST",
       behavior: "smooth",
       align: "end",
     });
-  };
+  }, [restorationReady, state.chatId, state.conversationScrollRequest]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (
+      !transition ||
+      transition.phase !== "applying" ||
+      transition.targetChatId !== state.chatId
+    ) {
+      return;
+    }
+    dispatch({
+      type: "ADVANCE_CHAT_TRANSITION",
+      seq: transition.seq,
+      targetChatId: transition.targetChatId,
+      phase: "restoring",
+    });
+  }, [dispatch, state.chatId, transition]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (
+      !transition ||
+      transition.phase !== "restoring" ||
+      transition.targetChatId !== state.chatId ||
+      restoredTransitionSeqRef.current === transition.seq
+    ) {
+      return;
+    }
+
+    restoredTransitionSeqRef.current = transition.seq;
+    restoringRef.current = true;
+    const bookmark = currentBookmark;
+    const shouldRestoreBottom = bookmark?.atBottom ?? true;
+    isAtBottomRef.current = shouldRestoreBottom;
+    setIsAtBottom(shouldRestoreBottom);
+    let cancelled = false;
+    let frameId = 0;
+    let stableFrameCount = 0;
+    let issuedIndexScroll = false;
+    const targetIndex = bookmark
+      ? resolveConversationRestoreIndex(bookmark, virtualItemKeys)
+      : virtualItemKeys.length - 1;
+    const targetItemKey = targetIndex >= 0 ? virtualItemKeys[targetIndex] : "";
+
+    const isStillCurrent = () => {
+      const latest = appContext?.stateRef.current.chatTransition;
+      return Boolean(
+        latest &&
+          latest.seq === transition.seq &&
+          latest.targetChatId === transition.targetChatId,
+      );
+    };
+    if (!isStillCurrent()) {
+      restoringRef.current = false;
+      return;
+    }
+    const finish = () => {
+      if (cancelled || !isStillCurrent()) return;
+      if (restoreTimeoutRef.current !== null) {
+        window.clearTimeout(restoreTimeoutRef.current);
+        restoreTimeoutRef.current = null;
+      }
+      restoringRef.current = false;
+      dispatch({
+        type: "ADVANCE_CHAT_TRANSITION",
+        seq: transition.seq,
+        targetChatId: transition.targetChatId,
+        phase: "ready",
+      });
+      if (transition.focusComposerOnReady) {
+        window.requestAnimationFrame(() => {
+          window.dispatchEvent(new CustomEvent("agent:focus-composer"));
+        });
+      }
+    };
+    const settle = () => {
+      if (cancelled || !isStillCurrent()) return;
+      if (virtualItemKeys.length === 0) {
+        finish();
+        return;
+      }
+      if (shouldRestoreBottom) {
+        if (!issuedIndexScroll) {
+          issuedIndexScroll = true;
+          virtuosoRef.current?.scrollToIndex({
+            index: "LAST",
+            behavior: "auto",
+            align: "end",
+          });
+        }
+        stableFrameCount += 1;
+      } else {
+        const scroller = scrollerRef.current;
+        const element =
+          targetItemKey && scroller
+            ? findConversationItemElement(scroller, targetItemKey)
+            : null;
+        if (!element || !scroller) {
+          if (!issuedIndexScroll && targetIndex >= 0) {
+            issuedIndexScroll = true;
+            virtuosoRef.current?.scrollToIndex({
+              index: targetIndex,
+              behavior: "auto",
+              align: "start",
+            });
+          }
+          stableFrameCount = 0;
+        } else {
+          const delta =
+            element.getBoundingClientRect().top -
+            scroller.getBoundingClientRect().top -
+            (bookmark?.anchorOffset || 0);
+          if (Math.abs(delta) <= 1) {
+            stableFrameCount += 1;
+          } else {
+            stableFrameCount = 0;
+            virtuosoRef.current?.scrollBy({
+              top: delta,
+              behavior: "auto",
+            });
+          }
+        }
+      }
+      if (stableFrameCount >= 2) {
+        finish();
+        return;
+      }
+      frameId = window.requestAnimationFrame(settle);
+    };
+
+    if (!shouldRestoreBottom && !matchingSnapshot && targetIndex >= 0) {
+      issuedIndexScroll = true;
+      virtuosoRef.current?.scrollToIndex({
+        index: targetIndex,
+        behavior: "auto",
+        align: "start",
+      });
+    }
+    restoreTimeoutRef.current = window.setTimeout(finish, 800);
+    frameId = window.requestAnimationFrame(settle);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frameId);
+      if (restoreTimeoutRef.current !== null) {
+        window.clearTimeout(restoreTimeoutRef.current);
+        restoreTimeoutRef.current = null;
+      }
+      restoringRef.current = false;
+    };
+  }, [
+    appContext?.stateRef,
+    currentBookmark,
+    dispatch,
+    matchingSnapshot,
+    state.chatId,
+    transition,
+    virtualItemKeys,
+  ]);
 
   useEffect(() => {
     return () => {
       statusTimerRef.current.forEach((timer) => window.clearTimeout(timer));
       statusTimerRef.current.clear();
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current);
+      }
+      if (restoreTimeoutRef.current !== null) {
+        window.clearTimeout(restoreTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -1123,6 +1607,7 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     if (!el) return;
 
     const updateWidthState = (width = el.clientWidth) => {
+      setContainerWidth(width);
       setQueryAnchorsEnabled(shouldEnableQueryAnchors(width));
     };
 
@@ -1295,17 +1780,35 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
         ) : null
       ) : (
         <Virtuoso
+          key={virtuosoInstanceKey}
           ref={virtuosoRef}
           data={virtualItems}
+          computeItemKey={(_index, item) => item.key}
+          restoreStateFrom={matchingSnapshot}
+          scrollerRef={(ref) => {
+            scrollerRef.current =
+              ref && typeof (ref as HTMLElement).querySelectorAll === "function"
+                ? (ref as HTMLElement)
+                : null;
+          }}
           increaseViewportBy={window.innerHeight}
-          followOutput={(atBottom) => (atBottom ? "smooth" : false)}
+          followOutput={(atBottom) =>
+            restorationReady &&
+            !restoringRef.current &&
+            isAtBottomRef.current &&
+            atBottom
+              ? "smooth"
+              : false
+          }
           atBottomThreshold={50}
           atBottomStateChange={handleAtBottomStateChange}
           rangeChanged={handleRangeChanged}
+          isScrolling={handleIsScrolling}
           className={VIRTUOSO_CLASS_NAME}
           id="messages"
           components={{
             Footer,
+            Item: ConversationVirtualItem,
           }}
           itemContent={(_index, listItem) => {
             if (listItem.kind === "query") {
@@ -1574,6 +2077,27 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
           }}
         />
       )}
+      {transitionOverlayVisible ? (
+        <ConversationTransitionOverlay
+          error={transitionError}
+          retryLabel={t("surface.retry")}
+          onRetry={() => {
+            const targetChatId = String(
+              transition?.targetChatId || normalizedExpectedChatId,
+            ).trim();
+            if (!targetChatId) return;
+            window.dispatchEvent(
+              new CustomEvent("agent:load-chat", {
+                detail: {
+                  chatId: targetChatId,
+                  focusComposerOnComplete:
+                    transition?.focusComposerOnReady === true,
+                },
+              }),
+            );
+          }}
+        />
+      ) : null}
     </div>
   );
 };

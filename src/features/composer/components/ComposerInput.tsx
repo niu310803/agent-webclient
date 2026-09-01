@@ -9,6 +9,7 @@ import { UiButton } from "@/shared/ui/UiButton";
 interface ComposerInputProps {
   isVoiceMode: boolean;
   isFrontendActive: boolean;
+  disabled?: boolean;
   isTimelineEmpty: boolean;
   inputValue: string;
   placeholder?: string;
@@ -133,6 +134,7 @@ function getVoiceStatusText(
 export const ComposerInput: React.FC<ComposerInputProps> = ({
   isVoiceMode,
   isFrontendActive,
+  disabled = false,
   isTimelineEmpty,
   inputValue,
   placeholder,
@@ -273,7 +275,7 @@ export const ComposerInput: React.FC<ComposerInputProps> = ({
                   (inputExpanded ? 1 : 0),
                 maxRows: inputMaxRows,
               }}
-              disabled={isFrontendActive}
+              disabled={isFrontendActive || disabled}
               value={inputValue}
               onChange={(event) => onInputChange(event.target.value)}
               onKeyDown={(e) => {
@@ -284,9 +286,9 @@ export const ComposerInput: React.FC<ComposerInputProps> = ({
                 }
                 onKeyDown(e);
               }}
-              onPaste={onPaste}
-              onDragOver={onDragOver}
-              onDrop={onDrop}
+              onPaste={disabled ? undefined : onPaste}
+              onDragOver={disabled ? undefined : onDragOver}
+              onDrop={disabled ? undefined : onDrop}
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
             />

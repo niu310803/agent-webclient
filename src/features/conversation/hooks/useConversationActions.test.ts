@@ -154,6 +154,7 @@ describe('replayEvent tool migration', () => {
 
   function renderChatActions(state = createInitialState()) {
     const dispatch = jest.fn();
+    const captureCurrent = jest.fn();
     useAppContext.mockReturnValue({
       state,
       dispatch,
@@ -161,6 +162,7 @@ describe('replayEvent tool migration', () => {
       querySessionsRef: { current: new Map() },
       chatQuerySessionIndexRef: { current: new Map() },
       activeQuerySessionRequestIdRef: { current: '' },
+      conversationViewportRef: { current: { captureCurrent } },
     });
 
     let actions: ReturnType<typeof useTestConversationActions> | null = null;
@@ -170,7 +172,7 @@ describe('replayEvent tool migration', () => {
     };
     renderToStaticMarkup(React.createElement(Harness));
 
-    return { actions, dispatch };
+    return { actions, dispatch, captureCurrent };
   }
 
   function createWorkerConversationState(options: {
@@ -278,7 +280,7 @@ describe('replayEvent tool migration', () => {
     );
   });
 
-  it('clears conversation overview data when switching to a different chat', async () => {
+  it('keeps the source conversation mounted behind the transition overlay while loading another chat', async () => {
     const state = createInitialState();
     state.chatId = 'chat_old';
     const { actions, dispatch } = renderChatActions(state);
@@ -299,11 +301,64 @@ describe('replayEvent tool migration', () => {
 
     await actions?.loadChat('chat_new');
 
-    expect(dispatch).toHaveBeenCalledWith({ type: 'CLEAR_EVENTS' });
-    expect(dispatch).toHaveBeenCalledWith({ type: 'CLEAR_CONVERSATION_OVERVIEW' });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'BEGIN_CHAT_TRANSITION',
+      transition: expect.objectContaining({
+        sourceChatId: 'chat_old',
+        targetChatId: 'chat_new',
+        phase: 'loading',
+        kind: 'history-switch',
+      }),
+    }));
+    expect(dispatch).not.toHaveBeenCalledWith({ type: 'CLEAR_EVENTS' });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: 'CLEAR_CONVERSATION_OVERVIEW' });
   });
 
-  it('commits the target chat id and resets state when switching to another chat fails', async () => {
+  it('captures before beginning a same-chat reload transaction', async () => {
+    const state = createInitialState();
+    state.chatId = 'chat_same';
+    const { actions, dispatch, captureCurrent } = renderChatActions(state);
+    getChat.mockResolvedValue({ data: { events: [], runs: [] } });
+
+    await actions?.loadChat('chat_same', { forceReload: true });
+
+    const beginCall = dispatch.mock.calls.find(
+      ([action]) => action.type === 'BEGIN_CHAT_TRANSITION',
+    );
+    expect(beginCall?.[0]).toEqual(expect.objectContaining({
+      transition: expect.objectContaining({ kind: 'same-chat-reload' }),
+    }));
+    expect(captureCurrent).toHaveBeenCalledTimes(1);
+    expect(captureCurrent.mock.invocationCallOrder[0]).toBeLessThan(
+      dispatch.mock.invocationCallOrder[dispatch.mock.calls.indexOf(beginCall!)],
+    );
+  });
+
+  it('only applies the newest target during an A to B to C race', async () => {
+    const state = createInitialState();
+    state.chatId = 'chat_a';
+    const { actions, dispatch } = renderChatActions(state);
+    let resolveB!: (value: { data: Record<string, unknown> }) => void;
+    let resolveC!: (value: { data: Record<string, unknown> }) => void;
+    getChat.mockImplementation((chatId: string) => new Promise((resolve) => {
+      if (chatId === 'chat_b') resolveB = resolve;
+      if (chatId === 'chat_c') resolveC = resolve;
+    }));
+
+    const loadingB = actions?.loadChat('chat_b') || Promise.resolve();
+    const loadingC = actions?.loadChat('chat_c') || Promise.resolve();
+    resolveC({ data: { events: [], runs: [] } });
+    await loadingC;
+    resolveB({ data: { events: [], runs: [] } });
+    await loadingB;
+
+    const appliedChatIds = dispatch.mock.calls
+      .filter(([action]) => action.type === 'BATCH_UPDATE')
+      .map(([action]) => action.updates.chatId);
+    expect(appliedChatIds).toEqual(['chat_c']);
+  });
+
+  it('keeps the source chat and exposes a retryable transition error when switching fails', async () => {
     const state = createInitialState();
     state.chatId = 'chat_old';
     const { actions, dispatch } = renderChatActions(state);
@@ -311,9 +366,13 @@ describe('replayEvent tool migration', () => {
 
     await actions?.loadChat('chat_new');
 
-    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_CHAT_ID', chatId: 'chat_new' });
-    expect(dispatch).toHaveBeenCalledWith({ type: 'RESET_CONVERSATION' });
-    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_STREAMING', streaming: false });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_CHAT_ID', chatId: 'chat_new' });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: 'RESET_CONVERSATION' });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'FAIL_CHAT_TRANSITION',
+      targetChatId: 'chat_new',
+      error: 'network down',
+    }));
   });
 
   it('keeps the current conversation intact when reloading the same chat fails', async () => {
@@ -326,7 +385,10 @@ describe('replayEvent tool migration', () => {
 
     expect(dispatch).not.toHaveBeenCalledWith({ type: 'SET_CHAT_ID', chatId: 'chat_same' });
     expect(dispatch).not.toHaveBeenCalledWith({ type: 'RESET_CONVERSATION' });
-    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_STREAMING', streaming: false });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'FAIL_CHAT_TRANSITION',
+      targetChatId: 'chat_same',
+    }));
   });
 
   it('retries loading a newly listed chat before leaving the route in loading state', async () => {

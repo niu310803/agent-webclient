@@ -6,6 +6,8 @@ import type {
 	AgentEvent,
 	AppState,
 	Chat,
+	ChatTransition,
+	ChatTransitionPhase,
 	ComposerRequiredSkill,
 	CurrentChatActiveRun,
 	Message,
@@ -62,6 +64,25 @@ export type AppAction =
 	| { type: "CHAT_RENAMED"; chatId: string; chatName: string }
 	| { type: "MARK_AGENT_CHATS_READ"; agentKey: string }
 	| { type: "SET_CHAT_ID"; chatId: string }
+	| { type: "BEGIN_CHAT_TRANSITION"; transition: ChatTransition }
+	| {
+			type: "ADVANCE_CHAT_TRANSITION";
+			seq: number;
+			targetChatId: string;
+			phase: Extract<ChatTransitionPhase, "applying" | "restoring" | "ready">;
+	  }
+	| {
+			type: "FAIL_CHAT_TRANSITION";
+			seq: number;
+			targetChatId: string;
+			error: string;
+	  }
+	| { type: "CLEAR_CHAT_TRANSITION" }
+	| {
+			type: "REQUEST_CONVERSATION_SCROLL";
+			chatId: string;
+			reason: "local-send" | "user-click";
+	  }
 	| { type: "SET_CURRENT_CHAT_ACTIVE_RUN"; activeRun: CurrentChatActiveRun | null }
 	| { type: "SET_RUN_ID"; runId: string }
 	| { type: "SET_RUN_AGENT_BY_ID"; runId: string; agentKey: string }

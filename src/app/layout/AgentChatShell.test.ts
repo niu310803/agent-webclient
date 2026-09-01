@@ -38,12 +38,22 @@ jest.mock("@/app/layout/TopNav", () => ({
 }));
 
 jest.mock("@/features/timeline/components/ConversationStage", () => ({
-  ConversationStage: ({ showEmptyState }: { showEmptyState?: boolean }) =>
+  ConversationStage: ({
+    showEmptyState,
+    surfaceMode,
+    expectedChatId,
+  }: {
+    showEmptyState?: boolean;
+    surfaceMode?: string;
+    expectedChatId?: string;
+  }) =>
     React.createElement(
       "main",
       {
         className: "conversation-stage",
         "data-show-empty-state": String(showEmptyState ?? true),
+        "data-surface-mode": surfaceMode,
+        "data-expected-chat-id": expectedChatId,
       },
       "stage",
     ),
@@ -875,11 +885,10 @@ describe("AgentChatShell", () => {
       }),
     );
     expect(loadAgents).not.toHaveBeenCalled();
-    expect(html).toContain("agent-route-loading-page");
-    expect(html).toContain("agent-route-loading-overlay");
-    expect(html).toContain("Loading conversation");
     expect(html).toContain("conversation-stage");
     expect(html).toContain('data-show-empty-state="false"');
+    expect(html).toContain('data-surface-mode="agent"');
+    expect(html).toContain('data-expected-chat-id="chat-123"');
 
     useEffectSpy.mockRestore();
   });

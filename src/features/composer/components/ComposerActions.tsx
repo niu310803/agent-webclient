@@ -47,6 +47,7 @@ interface ComposerActionsProps extends Omit<AddMenuTriggerProps, "disabled" | "l
   isFrontendActive: boolean;
   isVoiceMode: boolean;
   isStreaming: boolean;
+  interactionDisabled?: boolean;
   canCaptureDesktopScreenshot: boolean;
   isCapturingDesktopScreenshot: boolean;
   modelOverride: QueryModelOverride;
@@ -74,6 +75,7 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
   isFrontendActive,
   isVoiceMode,
   isStreaming,
+  interactionDisabled = false,
   canCaptureDesktopScreenshot,
   isCapturingDesktopScreenshot,
   modelOverride,
@@ -111,9 +113,9 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
     handleSend,
   } = useComposerContext();
   const attachmentActionsDisabled =
-    isFrontendActive || isVoiceMode || isStreaming;
+    interactionDisabled || isFrontendActive || isVoiceMode || isStreaming;
   // streaming 时允许通过 + 菜单上传附件，仅在前端工具激活或语音模式下禁用
-  const addMenuDisabled = isFrontendActive || isVoiceMode;
+  const addMenuDisabled = interactionDisabled || isFrontendActive || isVoiceMode;
 
   const controlRowRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
@@ -152,7 +154,7 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
       {isCopilot && (
         <Flex gap={4} style={{ overflow: "auto" }}>
           <ControlsForm
-            disabled={isFrontendActive || isStreaming}
+            disabled={interactionDisabled || isFrontendActive || isStreaming}
             onChange={onControlParamsChange}
           />
         </Flex>
@@ -224,6 +226,7 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
                 className={CONTEXT_TOGGLE_BUTTON_CLASS}
                 variant="ghost"
                 size="sm"
+                disabled={interactionDisabled}
                 onClick={onTogglePlanningMode}
               >
                 <MaterialIcon
@@ -269,7 +272,7 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
           ) : null}
           {!isCopilot && (
             <ControlsForm
-              disabled={isFrontendActive || isStreaming}
+              disabled={interactionDisabled || isFrontendActive || isStreaming}
               onChange={onControlParamsChange}
             />
           )}
@@ -290,7 +293,7 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
               variant="danger"
               size="sm"
               iconOnly
-              disabled={isFrontendActive}
+              disabled={interactionDisabled || isFrontendActive}
               onClick={() => void interruptCurrentRun()}
               aria-label={t("composer.actions.interrupt")}
             >
@@ -301,7 +304,7 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
           <>
             <QuerySettingsControls
               accessLevel={accessLevel}
-              disabled={isFrontendActive}
+              disabled={interactionDisabled || isFrontendActive}
               compact={compact}
               modelOverride={modelOverride}
               onAccessLevelChange={onAccessLevelChange}
@@ -313,7 +316,7 @@ export const ComposerActions: React.FC<ComposerActionsProps> = ({
                 variant="secondary"
                 size="sm"
                 iconOnly
-                disabled={isFrontendActive}
+                disabled={interactionDisabled || isFrontendActive}
                 onClick={toggleSpeechInput}
                 aria-label={
                   !speechSupported

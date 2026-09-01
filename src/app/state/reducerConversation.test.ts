@@ -323,3 +323,80 @@ describe("reduceConversationState – selectedSkillsByChatId", () => {
 		expect(next.selectedSkillsByChatId.chat_x).toBe(skills);
 	});
 });
+
+describe("reduceConversationState – chat transition", () => {
+	it("advances only the matching transition and rejects stale work", () => {
+		const started = appReducer(buildState(), {
+			type: "BEGIN_CHAT_TRANSITION",
+			transition: {
+				seq: 1,
+				sourceChatId: "chat-a",
+				targetChatId: "chat-b",
+				phase: "loading",
+				kind: "history-switch",
+				focusComposerOnReady: true,
+				error: "",
+			},
+		});
+		expect(started.chatLoadSeq).toBe(1);
+		expect(started.chatTransition?.phase).toBe("loading");
+
+		const stale = appReducer(started, {
+			type: "ADVANCE_CHAT_TRANSITION",
+			seq: 1,
+			targetChatId: "chat-c",
+			phase: "applying",
+		});
+		expect(stale).toBe(started);
+
+		const applying = appReducer(started, {
+			type: "ADVANCE_CHAT_TRANSITION",
+			seq: 1,
+			targetChatId: "chat-b",
+			phase: "applying",
+		});
+		expect(applying.chatTransition?.phase).toBe("applying");
+	});
+
+	it("records errors and creates monotonic explicit scroll requests", () => {
+		const started = appReducer(buildState(), {
+			type: "BEGIN_CHAT_TRANSITION",
+			transition: {
+				seq: 2,
+				sourceChatId: "",
+				targetChatId: "chat-b",
+				phase: "loading",
+				kind: "initial-load",
+				focusComposerOnReady: false,
+				error: "",
+			},
+		});
+		const failed = appReducer(started, {
+			type: "FAIL_CHAT_TRANSITION",
+			seq: 2,
+			targetChatId: "chat-b",
+			error: "network down",
+		});
+		expect(failed.chatTransition).toMatchObject({
+			phase: "error",
+			error: "network down",
+		});
+
+		const first = appReducer(failed, {
+			type: "REQUEST_CONVERSATION_SCROLL",
+			chatId: "chat-b",
+			reason: "local-send",
+		});
+		const second = appReducer(first, {
+			type: "REQUEST_CONVERSATION_SCROLL",
+			chatId: "chat-b",
+			reason: "user-click",
+		});
+		expect(first.conversationScrollRequest?.id).toBe(1);
+		expect(second.conversationScrollRequest).toMatchObject({
+			id: 2,
+			chatId: "chat-b",
+			reason: "user-click",
+		});
+	});
+});

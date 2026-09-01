@@ -471,7 +471,11 @@ export const CopilotShell: React.FC = () => {
             id="app"
           >
             <CopilotTopBar />
-            <ConversationStage showEmptyState={false} />
+            <ConversationStage
+              surfaceMode="copilot"
+              expectedChatId={routeChatId || undefined}
+              showEmptyState={false}
+            />
             {(!requestedAgentKey || routeAgentHydratedKey === requestedAgentKey) && (
               <BottomDock mode="copilot" />
             )}

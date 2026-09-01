@@ -42,6 +42,40 @@ jest.mock("@/features/workers/lib/currentWorker", () => ({
   resolveCurrentWorkerSummary: () => mockCurrentWorker,
 }));
 
+jest.mock("react-virtuoso", () => {
+  const React = require("react");
+  const Virtuoso = React.forwardRef((props: any, ref: any) => {
+    React.useImperativeHandle(ref, () => ({
+      getState: (callback: (snapshot: unknown) => void) =>
+        callback({ ranges: [], scrollTop: 0 }),
+      scrollBy: jest.fn(),
+      scrollToIndex: jest.fn(),
+    }));
+    const Item = props.components?.Item || "div";
+    const Footer = props.components?.Footer;
+    return React.createElement(
+      "div",
+      { className: props.className, id: props.id },
+      ...(props.data || []).map((item: unknown, index: number) =>
+        React.createElement(
+          Item,
+          {
+            key: props.computeItemKey?.(index, item) ?? index,
+            item,
+            "data-index": index,
+            "data-item-index": index,
+            "data-known-size": 0,
+            style: {},
+          },
+          props.itemContent(index, item),
+        ),
+      ),
+      Footer ? React.createElement(Footer) : null,
+    );
+  });
+  return { Virtuoso };
+});
+
 jest.mock("@/shared/icons/agent", () => ({
   AgentIcon: () => React.createElement("span", { className: "agent-icon" }, "agent-icon"),
 }));
@@ -201,7 +235,9 @@ describe("ConversationStage", () => {
       timelineOrder: nodes.map((node) => node.id),
     });
 
-    const html = renderToStaticMarkup(React.createElement(ConversationStage));
+    const html = renderToStaticMarkup(
+      React.createElement(ConversationStage, { surfaceMode: "main" }),
+    );
 
     expect(html).toContain("aria-label=\"派生新对话\"");
     expect(html).toContain("material-symbol-branches");
@@ -271,18 +307,16 @@ describe("ConversationStage", () => {
       timelineOrder: nodes.map((node) => node.id),
     });
 
-    const html = renderToStaticMarkup(React.createElement(ConversationStage));
+    const html = renderToStaticMarkup(
+      React.createElement(ConversationStage, { surfaceMode: "main" }),
+    );
 
-    expect(html).toContain("timeline-query-anchor-rail");
     expect(html).toContain("timeline-query-anchor-row");
     expect(html).toContain("id=\"query-user_1\"");
     expect(html).toContain("data-query-anchor-id=\"query-user_1\"");
     expect(html).toContain("id=\"query-user_2\"");
     expect(html).toContain("data-query-anchor-id=\"query-user_2\"");
-    expect(html).toContain("aria-label=\"定位到第 1 个提问\"");
-    expect(html).toContain("aria-label=\"定位到第 2 个提问\"");
     expect(html.match(/timeline-query-anchor-row/g)).toHaveLength(2);
-    expect(html.match(/class="timeline-query-anchor-line /g)).toHaveLength(2);
     expect(html).toContain("hi");
     expect(html).toContain("answer");
     expect(html).toContain("next");
@@ -327,7 +361,9 @@ describe("ConversationStage", () => {
       timelineOrder: nodes.map((node) => node.id),
     });
 
-    const html = renderToStaticMarkup(React.createElement(ConversationStage));
+    const html = renderToStaticMarkup(
+      React.createElement(ConversationStage, { surfaceMode: "main" }),
+    );
 
     expect(html).not.toContain("timeline-query-anchor-rail");
     expect(html).not.toContain("timeline-query-anchor-row");
@@ -377,7 +413,9 @@ describe("ConversationStage", () => {
       taskItemsById,
     });
 
-    const html = renderToStaticMarkup(React.createElement(ConversationStage));
+    const html = renderToStaticMarkup(
+      React.createElement(ConversationStage, { surfaceMode: "main" }),
+    );
 
     expect(html).toContain("timeline-task-group-header");
     expect(html).toContain("Main agent task");
@@ -431,7 +469,9 @@ describe("ConversationStage", () => {
       taskItemsById,
     });
 
-    const html = renderToStaticMarkup(React.createElement(ConversationStage));
+    const html = renderToStaticMarkup(
+      React.createElement(ConversationStage, { surfaceMode: "main" }),
+    );
 
     expect(html).toContain("timeline-task-group-header");
     expect(html).toContain("agent-icon");
@@ -450,10 +490,13 @@ describe("ConversationStage", () => {
     });
 
     const html = renderToStaticMarkup(
-      React.createElement(ConversationStage, { showEmptyState: false }),
+      React.createElement(ConversationStage, {
+        surfaceMode: "main",
+        showEmptyState: false,
+      }),
     );
 
-    expect(html).toContain("timeline-stack");
+    expect(html).toContain("conversation-stage");
     expect(html).not.toContain("timeline-empty");
     expect(html).not.toContain("今天有什么可以帮您");
   });
@@ -494,7 +537,9 @@ describe("ConversationStage", () => {
       timelineOrder: [],
     });
 
-    const html = renderToStaticMarkup(React.createElement(ConversationStage));
+    const html = renderToStaticMarkup(
+      React.createElement(ConversationStage, { surfaceMode: "main" }),
+    );
 
     expect(html).toContain("timeline-empty");
     expect(html).toContain("timeline-agent-switcher-trigger");
@@ -527,7 +572,9 @@ describe("ConversationStage", () => {
       timelineOrder: [],
     });
 
-    const html = renderToStaticMarkup(React.createElement(ConversationStage));
+    const html = renderToStaticMarkup(
+      React.createElement(ConversationStage, { surfaceMode: "main" }),
+    );
 
     expect(html).toContain("与 小宅 对话");
     expect(html).not.toContain("timeline-agent-switcher-trigger");

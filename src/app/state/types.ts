@@ -115,6 +115,37 @@ export interface ComposerRequiredSkill {
 	label: string;
 }
 
+export type ConversationSurfaceMode = "main" | "agent" | "copilot";
+
+export type ChatTransitionPhase =
+	| "loading"
+	| "applying"
+	| "restoring"
+	| "ready"
+	| "error";
+
+export type ChatTransitionKind =
+	| "initial-load"
+	| "history-switch"
+	| "same-chat-reload";
+
+export interface ChatTransition {
+	seq: number;
+	sourceChatId: string;
+	targetChatId: string;
+	phase: ChatTransitionPhase;
+	kind: ChatTransitionKind;
+	focusComposerOnReady: boolean;
+	error: string;
+}
+
+export interface ConversationScrollRequest {
+	id: number;
+	chatId: string;
+	target: "bottom";
+	reason: "local-send" | "user-click";
+}
+
 export interface AppState {
 	agents: Agent[];
 	teams: Team[];
@@ -173,6 +204,8 @@ export interface AppState {
 	workerRelatedChats: WorkerConversationRow[];
 	workerChatPanelCollapsed: boolean;
 	chatLoadSeq: number;
+	chatTransition: ChatTransition | null;
+	conversationScrollRequest: ConversationScrollRequest | null;
 	memoryConsoleTab: MemoryConsoleTab;
 	memoryInfoLoading: boolean;
 	memoryInfoError: string;

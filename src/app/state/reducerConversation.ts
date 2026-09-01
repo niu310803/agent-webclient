@@ -15,6 +15,66 @@ export function reduceConversationState(
 	action: AppAction,
 ): AppState | null {
 	switch (action.type) {
+		case "BEGIN_CHAT_TRANSITION": {
+			if (action.transition.seq <= state.chatLoadSeq) {
+				return state;
+			}
+			return {
+				...state,
+				chatLoadSeq: action.transition.seq,
+				chatTransition: action.transition,
+			};
+		}
+		case "ADVANCE_CHAT_TRANSITION": {
+			const transition = state.chatTransition;
+			if (
+				!transition ||
+				transition.seq !== action.seq ||
+				transition.targetChatId !== action.targetChatId
+			) {
+				return state;
+			}
+			return {
+				...state,
+				chatTransition: {
+					...transition,
+					phase: action.phase,
+					error: "",
+				},
+			};
+		}
+		case "FAIL_CHAT_TRANSITION": {
+			const transition = state.chatTransition;
+			if (
+				!transition ||
+				transition.seq !== action.seq ||
+				transition.targetChatId !== action.targetChatId
+			) {
+				return state;
+			}
+			return {
+				...state,
+				chatTransition: {
+					...transition,
+					phase: "error",
+					error: action.error,
+				},
+			};
+		}
+		case "CLEAR_CHAT_TRANSITION":
+			return state.chatTransition ? { ...state, chatTransition: null } : state;
+		case "REQUEST_CONVERSATION_SCROLL": {
+			const id = (state.conversationScrollRequest?.id || 0) + 1;
+			return {
+				...state,
+				conversationScrollRequest: {
+					id,
+					chatId: String(action.chatId || "").trim(),
+					target: "bottom",
+					reason: action.reason,
+				},
+			};
+		}
 		case "SET_CHAT_ID": {
 			const restored = state.planningModeByChatId[action.chatId];
 			const currentPlanningMode = state.planningMode;

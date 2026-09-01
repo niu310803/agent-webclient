@@ -32,12 +32,18 @@ jest.mock("@/shared/data", () => ({
 }));
 
 jest.mock("@/features/timeline/components/ConversationStage", () => ({
-  ConversationStage: (props: { showEmptyState?: boolean }) =>
+  ConversationStage: (props: {
+    showEmptyState?: boolean;
+    surfaceMode?: string;
+    expectedChatId?: string;
+  }) =>
     React.createElement(
       "main",
       {
         className: "conversation-stage",
         "data-show-empty-state": String(props.showEmptyState),
+        "data-surface-mode": props.surfaceMode,
+        "data-expected-chat-id": props.expectedChatId,
       },
       "stage",
     ),
@@ -346,6 +352,7 @@ describe("CopilotShell", () => {
     expect(html).toContain("conversation-stage");
     expect(html).toContain("bottom-dock");
     expect(html).toContain('data-show-empty-state="false"');
+    expect(html).toContain('data-surface-mode="copilot"');
     expect(html).toContain('data-mode="copilot"');
     expect(html).toContain("command-modal");
     expect(html).toContain('data-variant="copilot"');

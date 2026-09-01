@@ -372,17 +372,6 @@ export const AgentChatShell: React.FC = () => {
   const routeAgentReady =
     routeAgentHydrated &&
     (!agentKey || state.workerSelectionKey === routeWorkerKey);
-  const currentStateChatId = String(state.chatId || "").trim();
-  const routeHasVisibleConversation =
-    Boolean(chatId) &&
-    !currentStateChatId &&
-    state.workerSelectionKey === routeWorkerKey &&
-    (state.timelineOrder.length > 0 || state.streaming || Boolean(state.runId));
-  const routeChatReady =
-    !chatId || currentStateChatId === chatId || routeHasVisibleConversation;
-  const hasVisibleConversationContent =
-    state.timelineOrder.length > 0 || state.streaming || Boolean(state.runId);
-
   const { loadAgents } = useAppRuntimes({
     initialWorkerRefreshEnabled: false,
   });
@@ -835,11 +824,10 @@ export const AgentChatShell: React.FC = () => {
             .join(" ")}
           id="app"
         >
-          {!routeChatReady && !hasVisibleConversationContent ? (
-            <AgentRouteLoadingPage title={t("agentRoute.loading.chat")} overlay />
-          ) : null}
           <TopNav surface="agent" />
           <ConversationStage
+            surfaceMode="agent"
+            expectedChatId={chatId || undefined}
             showEmptyState={!chatId}
             onResendInNewChat={handleResendInNewChat}
           />
