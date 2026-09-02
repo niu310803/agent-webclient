@@ -192,8 +192,10 @@ describe("ConversationStage scroll restoration", () => {
   let container: HTMLDivElement;
   let root: Root;
   let rafId = 0;
+  let reducedMotion = false;
 
   beforeEach(() => {
+    jest.useFakeTimers();
     clearConversationScrollBookmarks();
     mockDispatch.mockReset();
     mockScrollToIndex.mockReset();
@@ -228,10 +230,26 @@ describe("ConversationStage scroll restoration", () => {
       configurable: true,
       value: jest.fn(),
     });
+    reducedMotion = false;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: jest.fn(() => ({
+        matches: reducedMotion,
+        media: "(prefers-reduced-motion: reduce)",
+        onchange: null,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        addListener: jest.fn(),
+        removeListener: jest.fn(),
+        dispatchEvent: jest.fn(),
+      })),
+    });
   });
 
   afterEach(() => {
     act(() => root.unmount());
+    expect(jest.getTimerCount()).toBe(0);
+    jest.useRealTimers();
     container.remove();
   });
 
@@ -252,6 +270,223 @@ describe("ConversationStage scroll restoration", () => {
     expect(container.querySelector(".conversation-transition-overlay")).not.toBeNull();
     expect(container.querySelector('[data-node-id="query-1"]')).not.toBeNull();
     expect(mockVirtuosoProps.followOutput(true)).toBe(false);
+  });
+
+  it("keeps a fast blocking history skeleton for 320ms and fades it for 180ms", () => {
+    mockState = createChatState(createTransition("loading"));
+    mockStateRef.current = mockState;
+    renderStage();
+
+    let overlay = container.querySelector<HTMLElement>(
+      ".conversation-transition-overlay",
+    );
+    expect(overlay?.dataset.transitionPhase).toBe("visible");
+    expect(overlay?.getAttribute("aria-busy")).toBe("true");
+
+    mockState = createChatState(createTransition("ready"));
+    mockStateRef.current = mockState;
+    renderStage();
+    overlay = container.querySelector<HTMLElement>(
+      ".conversation-transition-overlay",
+    );
+    expect(overlay?.getAttribute("aria-busy")).toBe("false");
+
+    act(() => jest.advanceTimersByTime(319));
+    expect(
+      container.querySelector<HTMLElement>(".conversation-transition-overlay")
+        ?.dataset.transitionPhase,
+    ).toBe("visible");
+
+    act(() => jest.advanceTimersByTime(1));
+    expect(
+      container.querySelector<HTMLElement>(".conversation-transition-overlay")
+        ?.dataset.transitionPhase,
+    ).toBe("exiting");
+
+    act(() => jest.advanceTimersByTime(179));
+    expect(
+      container.querySelector(".conversation-transition-overlay"),
+    ).not.toBeNull();
+    act(() => jest.advanceTimersByTime(1));
+    expect(
+      container.querySelector(".conversation-transition-overlay"),
+    ).toBeNull();
+  });
+
+  it("starts the full fade as soon as a slow blocking history load is ready", () => {
+    mockState = createChatState(createTransition("loading"));
+    mockStateRef.current = mockState;
+    renderStage();
+    act(() => jest.advanceTimersByTime(700));
+
+    mockState = createChatState(createTransition("ready"));
+    mockStateRef.current = mockState;
+    renderStage();
+
+    expect(
+      container.querySelector<HTMLElement>(".conversation-transition-overlay")
+        ?.dataset.transitionPhase,
+    ).toBe("exiting");
+    act(() => jest.advanceTimersByTime(179));
+    expect(
+      container.querySelector(".conversation-transition-overlay"),
+    ).not.toBeNull();
+    act(() => jest.advanceTimersByTime(1));
+    expect(
+      container.querySelector(".conversation-transition-overlay"),
+    ).toBeNull();
+  });
+
+  it("uses transitionend to remove an exiting history skeleton", () => {
+    mockState = createChatState(createTransition("loading"));
+    mockStateRef.current = mockState;
+    renderStage();
+    mockState = createChatState(createTransition("ready"));
+    mockStateRef.current = mockState;
+    renderStage();
+    act(() => jest.advanceTimersByTime(320));
+
+    const overlay = container.querySelector<HTMLElement>(
+      ".conversation-transition-overlay",
+    );
+    expect(overlay?.dataset.transitionPhase).toBe("exiting");
+    const transitionEnd = new Event("transitionend", { bubbles: true });
+    Object.defineProperty(transitionEnd, "propertyName", { value: "opacity" });
+    act(() => overlay?.dispatchEvent(transitionEnd));
+
+    expect(
+      container.querySelector(".conversation-transition-overlay"),
+    ).toBeNull();
+  });
+
+  it("does not let an older history timer hide a newer target", () => {
+    mockState = {
+      ...createChatState(createTransition("loading", {
+        targetChatId: "chat-b",
+      })),
+      chatId: "chat-source",
+    };
+    mockStateRef.current = mockState;
+    renderStage("chat-b");
+
+    mockState = {
+      ...createChatState(createTransition("ready", {
+        targetChatId: "chat-b",
+      })),
+      chatId: "chat-b",
+    };
+    mockStateRef.current = mockState;
+    renderStage("chat-b");
+    act(() => jest.advanceTimersByTime(100));
+
+    mockState = {
+      ...createChatState(createTransition("loading", {
+        seq: 2,
+        sourceChatId: "chat-b",
+        targetChatId: "chat-c",
+      })),
+      chatId: "chat-b",
+    };
+    mockStateRef.current = mockState;
+    renderStage("chat-c");
+    mockState = {
+      ...createChatState(createTransition("ready", {
+        seq: 2,
+        sourceChatId: "chat-b",
+        targetChatId: "chat-c",
+      })),
+      chatId: "chat-c",
+    };
+    mockStateRef.current = mockState;
+    renderStage("chat-c");
+
+    act(() => jest.advanceTimersByTime(220));
+    expect(
+      container.querySelector<HTMLElement>(".conversation-transition-overlay")
+        ?.dataset.transitionPhase,
+    ).toBe("visible");
+    act(() => jest.advanceTimersByTime(100));
+    expect(
+      container.querySelector<HTMLElement>(".conversation-transition-overlay")
+        ?.dataset.transitionPhase,
+    ).toBe("exiting");
+  });
+
+  it("shows errors immediately and restarts the minimum duration on retry", () => {
+    mockState = createChatState(createTransition("loading"));
+    mockStateRef.current = mockState;
+    renderStage();
+    act(() => jest.advanceTimersByTime(50));
+
+    mockState = createChatState(createTransition("error", {
+      error: "history failed",
+    }));
+    mockStateRef.current = mockState;
+    renderStage();
+    const errorOverlay = container.querySelector<HTMLElement>(
+      ".conversation-transition-overlay",
+    );
+    expect(errorOverlay?.getAttribute("role")).toBe("alert");
+    expect(errorOverlay?.getAttribute("aria-busy")).toBe("false");
+    expect(container.textContent).toContain("history failed");
+    act(() => jest.advanceTimersByTime(1_000));
+    expect(
+      container.querySelector(".conversation-transition-overlay"),
+    ).not.toBeNull();
+
+    mockState = createChatState(createTransition("loading", { seq: 2 }));
+    mockStateRef.current = mockState;
+    renderStage();
+    mockState = createChatState(createTransition("ready", { seq: 2 }));
+    mockStateRef.current = mockState;
+    renderStage();
+    act(() => jest.advanceTimersByTime(319));
+    expect(
+      container.querySelector<HTMLElement>(".conversation-transition-overlay")
+        ?.dataset.transitionPhase,
+    ).toBe("visible");
+    act(() => jest.advanceTimersByTime(1));
+    expect(
+      container.querySelector<HTMLElement>(".conversation-transition-overlay")
+        ?.dataset.transitionPhase,
+    ).toBe("exiting");
+  });
+
+  it("removes an already visible skeleton immediately for background recovery", () => {
+    mockState = createChatState(createTransition("loading"));
+    mockStateRef.current = mockState;
+    renderStage();
+    act(() => jest.advanceTimersByTime(100));
+
+    mockState = createChatState(createTransition("restoring", {
+      displayMode: "background",
+    }));
+    mockStateRef.current = mockState;
+    renderStage();
+
+    expect(
+      container.querySelector(".conversation-transition-overlay"),
+    ).toBeNull();
+  });
+
+  it("keeps reduced-motion skeletons opaque for the full 500ms", () => {
+    reducedMotion = true;
+    mockState = createChatState(createTransition("loading"));
+    mockStateRef.current = mockState;
+    renderStage();
+    mockState = createChatState(createTransition("ready"));
+    mockStateRef.current = mockState;
+    renderStage();
+
+    act(() => jest.advanceTimersByTime(499));
+    expect(
+      container.querySelector<HTMLElement>(".conversation-transition-overlay")
+        ?.dataset.transitionPhase,
+    ).toBe("visible");
+    act(() => jest.advanceTimersByTime(1));
+    expect(
+      container.querySelector(".conversation-transition-overlay"),
+    ).toBeNull();
   });
 
   it("keeps the live timeline visible while its canonical route binding catches up", () => {

@@ -149,6 +149,13 @@ const VIRTUOSO_CLASS_NAME = [
 ].join(" ");
 const CONVERSATION_TRANSITION_OVERLAY_CLASS_NAME =
   "conversation-transition-overlay tw:absolute tw:inset-0 tw:z-20 tw:grid tw:place-items-center tw:overflow-hidden tw:bg-bg-base tw:px-6";
+const CONVERSATION_TRANSITION_OVERLAY_HOLD_MS = 320;
+const CONVERSATION_TRANSITION_OVERLAY_FADE_MS = 180;
+const CONVERSATION_TRANSITION_OVERLAY_REDUCED_MOTION_HOLD_MS =
+  CONVERSATION_TRANSITION_OVERLAY_HOLD_MS +
+  CONVERSATION_TRANSITION_OVERLAY_FADE_MS;
+const CONVERSATION_TRANSITION_REDUCED_MOTION_QUERY =
+  "(prefers-reduced-motion: reduce)";
 const CONVERSATION_TRANSITION_SKELETON_CLASS_NAME =
   "conversation-transition-skeleton tw:flex tw:w-full tw:max-w-[760px] tw:flex-col tw:gap-5";
 const CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME =
@@ -769,18 +776,29 @@ function findConversationItemElement(
 }
 
 function ConversationTransitionOverlay({
+  busy,
   error,
+  phase,
   onRetry,
+  onTransitionEnd,
   retryLabel,
 }: {
+  busy: boolean;
   error: string;
+  phase: "visible" | "exiting";
   onRetry: () => void;
+  onTransitionEnd: (event: React.TransitionEvent<HTMLDivElement>) => void;
   retryLabel: string;
 }) {
   return (
     <div
-      className={CONVERSATION_TRANSITION_OVERLAY_CLASS_NAME}
-      aria-busy={!error}
+      className={[
+        CONVERSATION_TRANSITION_OVERLAY_CLASS_NAME,
+        phase === "exiting" ? "is-exiting" : "is-visible",
+      ].join(" ")}
+      aria-busy={busy}
+      data-transition-phase={phase}
+      onTransitionEnd={onTransitionEnd}
       role={error ? "alert" : "status"}
     >
       {error ? (
@@ -1008,6 +1026,157 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     (!liveQueryTakesDisplayPriority &&
       !backgroundTransitionOwnsDisplayedChat &&
       (routeTargetMismatch || transitionPending));
+  const transitionOverlayIdentity = transition
+    ? `${transition.seq}:${transition.targetChatId}`
+    : `route:${normalizedExpectedChatId}`;
+  const transitionOverlayImmediateDismiss = Boolean(
+    !transitionError &&
+      (liveQueryTakesDisplayPriority ||
+        backgroundTransitionOwnsDisplayedChat ||
+        !overlayTargetChatId),
+  );
+  const [transitionOverlayPresentation, setTransitionOverlayPresentation] =
+    useState<{ identity: string; phase: "visible" | "exiting" } | null>(
+      null,
+    );
+  const transitionOverlayIdentityRef = useRef("");
+  const transitionOverlayShownAtRef = useRef(0);
+  const transitionOverlayHoldTimerRef = useRef<number | null>(null);
+  const transitionOverlayUnmountTimerRef = useRef<number | null>(null);
+  const clearTransitionOverlayTimers = useCallback(() => {
+    if (transitionOverlayHoldTimerRef.current !== null) {
+      window.clearTimeout(transitionOverlayHoldTimerRef.current);
+      transitionOverlayHoldTimerRef.current = null;
+    }
+    if (transitionOverlayUnmountTimerRef.current !== null) {
+      window.clearTimeout(transitionOverlayUnmountTimerRef.current);
+      transitionOverlayUnmountTimerRef.current = null;
+    }
+  }, []);
+  const finishTransitionOverlayPresentation = useCallback(
+    (identity: string) => {
+      if (transitionOverlayIdentityRef.current !== identity) return;
+      clearTransitionOverlayTimers();
+      transitionOverlayIdentityRef.current = "";
+      transitionOverlayShownAtRef.current = 0;
+      setTransitionOverlayPresentation((current) =>
+        current?.identity === identity ? null : current,
+      );
+    },
+    [clearTransitionOverlayTimers],
+  );
+  const beginTransitionOverlayExit = useCallback(
+    (identity: string, reducedMotion: boolean) => {
+      if (transitionOverlayIdentityRef.current !== identity) return;
+      if (transitionOverlayHoldTimerRef.current !== null) {
+        window.clearTimeout(transitionOverlayHoldTimerRef.current);
+        transitionOverlayHoldTimerRef.current = null;
+      }
+      if (transitionOverlayUnmountTimerRef.current !== null) {
+        window.clearTimeout(transitionOverlayUnmountTimerRef.current);
+        transitionOverlayUnmountTimerRef.current = null;
+      }
+      if (reducedMotion) {
+        finishTransitionOverlayPresentation(identity);
+        return;
+      }
+      setTransitionOverlayPresentation((current) =>
+        current?.identity === identity
+          ? { ...current, phase: "exiting" }
+          : current,
+      );
+      transitionOverlayUnmountTimerRef.current = window.setTimeout(
+        () => finishTransitionOverlayPresentation(identity),
+        CONVERSATION_TRANSITION_OVERLAY_FADE_MS,
+      );
+    },
+    [finishTransitionOverlayPresentation],
+  );
+
+  useIsomorphicLayoutEffect(() => {
+    if (transitionOverlayImmediateDismiss) {
+      const activeIdentity = transitionOverlayIdentityRef.current;
+      if (activeIdentity) {
+        finishTransitionOverlayPresentation(activeIdentity);
+      }
+      return;
+    }
+
+    if (transitionOverlayVisible) {
+      clearTransitionOverlayTimers();
+      if (
+        transitionOverlayIdentityRef.current !== transitionOverlayIdentity
+      ) {
+        transitionOverlayIdentityRef.current = transitionOverlayIdentity;
+        transitionOverlayShownAtRef.current = window.performance.now();
+      }
+      setTransitionOverlayPresentation((current) =>
+        current?.identity === transitionOverlayIdentity &&
+        current.phase === "visible"
+          ? current
+          : { identity: transitionOverlayIdentity, phase: "visible" },
+      );
+      return;
+    }
+
+    const activeIdentity = transitionOverlayIdentityRef.current;
+    if (!activeIdentity) return;
+    if (
+      transitionOverlayHoldTimerRef.current !== null ||
+      transitionOverlayUnmountTimerRef.current !== null
+    ) {
+      return;
+    }
+    const reducedMotion = Boolean(
+      window.matchMedia?.(CONVERSATION_TRANSITION_REDUCED_MOTION_QUERY).matches,
+    );
+    const holdMs = reducedMotion
+      ? CONVERSATION_TRANSITION_OVERLAY_REDUCED_MOTION_HOLD_MS
+      : CONVERSATION_TRANSITION_OVERLAY_HOLD_MS;
+    const elapsedMs = Math.max(
+      0,
+      window.performance.now() - transitionOverlayShownAtRef.current,
+    );
+    const remainingHoldMs = Math.max(0, holdMs - elapsedMs);
+    if (remainingHoldMs === 0) {
+      beginTransitionOverlayExit(activeIdentity, reducedMotion);
+      return;
+    }
+    transitionOverlayHoldTimerRef.current = window.setTimeout(
+      () => beginTransitionOverlayExit(activeIdentity, reducedMotion),
+      remainingHoldMs,
+    );
+  }, [
+    beginTransitionOverlayExit,
+    clearTransitionOverlayTimers,
+    finishTransitionOverlayPresentation,
+    transitionOverlayIdentity,
+    transitionOverlayImmediateDismiss,
+    transitionOverlayVisible,
+  ]);
+
+  useEffect(
+    () => () => {
+      clearTransitionOverlayTimers();
+    },
+    [clearTransitionOverlayTimers],
+  );
+
+  const handleTransitionOverlayTransitionEnd = useCallback(
+    (event: React.TransitionEvent<HTMLDivElement>) => {
+      if (
+        event.target !== event.currentTarget ||
+        event.propertyName !== "opacity" ||
+        transitionOverlayPresentation?.phase !== "exiting"
+      ) {
+        return;
+      }
+      finishTransitionOverlayPresentation(
+        transitionOverlayPresentation.identity,
+      );
+    },
+    [finishTransitionOverlayPresentation, transitionOverlayPresentation],
+  );
   const restorationReady =
     liveQueryTakesDisplayPriority ||
     backgroundTransitionOwnsDisplayedChat ||
@@ -2127,10 +2296,13 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
           }}
         />
       )}
-      {transitionOverlayVisible ? (
+      {transitionOverlayPresentation ? (
         <ConversationTransitionOverlay
+          busy={Boolean(transitionOverlayVisible && !transitionError)}
           error={transitionError}
+          phase={transitionOverlayPresentation.phase}
           retryLabel={t("surface.retry")}
+          onTransitionEnd={handleTransitionOverlayTransitionEnd}
           onRetry={() => {
             const targetChatId = String(
               transition?.targetChatId || normalizedExpectedChatId,
