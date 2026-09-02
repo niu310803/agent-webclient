@@ -1,6 +1,7 @@
 import {
 	buildResourceViewerTarget,
 	buildResourceViewerTargetFromUrl,
+	detectDocumentContentKind,
 	detectViewerContentKind,
 	isViewerContentSupported,
 } from "@/features/viewers/lib/viewerTarget";
@@ -99,6 +100,7 @@ describe("viewerTarget", () => {
 			downloadUrl: "artifacts/msx9nzkm/%E7%81%AF%E4%B8%8B.md",
 			type: "resource",
 			contentKind: "text",
+			documentKind: "document-markdown",
 		});
 	});
 
@@ -147,7 +149,21 @@ describe("viewerTarget", () => {
 			resourceType: undefined,
 			type: "resource",
 			contentKind: "text",
+			documentKind: "document-text",
 		});
+	});
+
+	it("uses the unified document classifier ordering", () => {
+		expect(detectDocumentContentKind({ name: "brief.docx", mimeType: "application/zip" }))
+			.toBe("document-office");
+		expect(detectDocumentContentKind({ name: "icon.svg", mimeType: "text/xml" }))
+			.toBe("document-image");
+		expect(detectDocumentContentKind({ name: "README.md", mimeType: "text/plain" }))
+			.toBe("document-markdown");
+		expect(detectDocumentContentKind({ name: "app.ts", mimeType: "text/plain" }))
+			.toBe("document-code");
+		expect(detectDocumentContentKind({ name: "archive.zip", mimeType: "application/zip" }))
+			.toBe("document-archive");
 	});
 
 	it("keeps resource size metadata in the Viewer target", () => {

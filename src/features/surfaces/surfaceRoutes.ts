@@ -24,7 +24,15 @@ export type SurfaceRouteIntent =
   | { kind: "btw"; chatId: string; btwId?: string }
   | { kind: "source"; sourceId: string; chatId: string; chunkId?: string }
   | { kind: "planning"; planningId: string; chatId: string }
-  | { kind: "resource"; agentKey: string; chatId: string; file: string }
+  | {
+      kind: "resource";
+      agentKey: string;
+      chatId: string;
+      file: string;
+      sourceKind?: "artifact" | "reference";
+      resourceId?: string;
+      relativePath?: string;
+    }
   | { kind: "file"; agentKey: string; path: string; line?: number }
   | {
       kind: "project";
@@ -147,6 +155,9 @@ export function buildSurfaceRoute(
         pathname = `/resource-viewer/${agentKey}`;
         params.set("chatId", clean(intent.chatId));
         params.set("file", clean(intent.file));
+        set(params, "sourceKind", intent.sourceKind);
+        set(params, "resourceId", intent.resourceId);
+        set(params, "relativePath", intent.relativePath);
         break;
       case "file":
         if (!clean(intent.path)) return "";
@@ -223,7 +234,17 @@ export function parseSurfaceRoute(pathname: string, search = ""): SurfaceRouteIn
       return { kind: "skill", key: identity };
     case "resource-viewer":
       return chatId && value("file")
-        ? { kind: "resource", agentKey: identity, chatId, file: value("file") }
+        ? {
+            kind: "resource",
+            agentKey: identity,
+            chatId,
+            file: value("file"),
+            ...(value("sourceKind") === "artifact" || value("sourceKind") === "reference"
+              ? { sourceKind: value("sourceKind") as "artifact" | "reference" }
+              : {}),
+            ...(value("resourceId") ? { resourceId: value("resourceId") } : {}),
+            ...(value("relativePath") ? { relativePath: value("relativePath") } : {}),
+          }
         : null;
     case "file-viewer": {
       const line = Number(value("line"));

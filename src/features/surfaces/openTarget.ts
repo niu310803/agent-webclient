@@ -12,6 +12,8 @@ import {
 } from "@/features/viewers/lib/viewerTarget";
 import type {
   WorkPanelItemDescriptor,
+  WorkPanelOpenDocumentInput,
+  WorkPanelOpenDocumentResult,
   WorkPanelOpenResourceInput,
   WorkPanelOpenResourceResult,
 } from "@/features/transport/contracts/generated/agentWebclientBridge";
@@ -86,6 +88,27 @@ function clean(value: unknown): string {
   return String(value || "").trim();
 }
 
+function cleanWorkPanelFileTitle(value: unknown): string {
+  const title = typeof value === "string" ? value.trim() : "";
+  if (!title || /[\u0000-\u001f\u007f]/u.test(title)) return "";
+  return title.slice(0, 160);
+}
+
+export function resolveWorkPanelFileTitle(
+  path: unknown,
+  explicitTitle?: unknown,
+): string {
+  const title = cleanWorkPanelFileTitle(explicitTitle);
+  if (title) return title;
+  const normalizedPath = typeof path === "string"
+    ? path.replace(/\\/g, "/").replace(/\/+$/u, "")
+    : "";
+  const fileName = cleanWorkPanelFileTitle(
+    normalizedPath.split("/").filter(Boolean).pop(),
+  );
+  return fileName || "file";
+}
+
 export function normalizeWorkspaceFileRequestPath(value: unknown): string {
   const requestedPath = typeof value === "string" ? value : "";
   if (
@@ -104,8 +127,14 @@ function resourceRouteIntent(input: {
   agentKey: string;
   chatId: string;
   file: string;
+  sourceKind?: "artifact" | "reference";
+  resourceId?: string;
+  relativePath?: string;
 }): SurfaceRouteIntent | null {
   const file = clean(input.file);
+  const completeSource = Boolean(
+    input.sourceKind && clean(input.resourceId) && clean(input.relativePath),
+  );
   const classification = classifyResourceUrl(file, clean(input.chatId));
   return classification.kind === "chat" || classification.kind === "absolute"
     ? {
@@ -113,6 +142,11 @@ function resourceRouteIntent(input: {
         agentKey: input.agentKey,
         chatId: input.chatId,
         file,
+        ...(completeSource ? {
+          sourceKind: input.sourceKind,
+          resourceId: clean(input.resourceId),
+          relativePath: clean(input.relativePath),
+        } : {}),
       }
     : null;
 }
@@ -146,12 +180,24 @@ function toSurfaceRouteIntent(intent: OpenTargetIntent): SurfaceRouteIntent | nu
         agentKey,
         chatId: intent.chatId,
         file: clean(intent.resourceTarget?.url),
+        sourceKind: "artifact",
+        resourceId: intent.artifactId,
+        relativePath: decodeNativeResourceRelativePath(
+          classifyResourceUrl(clean(intent.resourceTarget?.url), intent.chatId).resourceKey || "",
+          "artifact",
+        ),
       });
     case "reference":
       return resourceRouteIntent({
         agentKey,
         chatId: intent.chatId,
         file: clean(intent.resourceTarget?.url),
+        sourceKind: "reference",
+        resourceId: intent.referenceId,
+        relativePath: decodeNativeResourceRelativePath(
+          classifyResourceUrl(clean(intent.resourceTarget?.url), intent.chatId).resourceKey || "",
+          "reference",
+        ),
       });
     case "resource":
       return resourceRouteIntent({
@@ -341,11 +387,17 @@ export function buildDesktopWorkPanelDescriptor(
     const chatId = clean(intent.chatId);
     const artifactId = clean(intent.artifactId);
     if (!chatId || !artifactId) return null;
+    const nativeIdentity = buildDesktopNativeResourceRequest(intent);
     return {
       kind: "webclient",
       module: "artifact",
       route,
-      context: { agentKey, chatId, artifactId },
+      context: {
+        agentKey,
+        chatId,
+        artifactId,
+        ...(nativeIdentity?.relativePath ? { relativePath: nativeIdentity.relativePath } : {}),
+      },
       ...(intent.title || intent.resourceTarget?.name ? { title: intent.title || intent.resourceTarget?.name } : {}),
     };
   }
@@ -353,11 +405,17 @@ export function buildDesktopWorkPanelDescriptor(
     const chatId = clean(intent.chatId);
     const referenceId = clean(intent.referenceId);
     if (!chatId || !referenceId) return null;
+    const nativeIdentity = buildDesktopNativeResourceRequest(intent);
     return {
       kind: "webclient",
       module: "reference",
       route,
-      context: { agentKey, chatId, referenceId },
+      context: {
+        agentKey,
+        chatId,
+        referenceId,
+        ...(nativeIdentity?.relativePath ? { relativePath: nativeIdentity.relativePath } : {}),
+      },
       ...(intent.title || intent.resourceTarget?.name ? { title: intent.title || intent.resourceTarget?.name } : {}),
     };
   }
@@ -371,7 +429,7 @@ export function buildDesktopWorkPanelDescriptor(
       module: "file",
       route: fileRoute,
       context: { agentKey, path },
-      ...(intent.title ? { title: intent.title } : {}),
+      title: resolveWorkPanelFileTitle(path, intent.title),
     };
   }
   if (intent.kind === "project") {
@@ -410,6 +468,10 @@ export function buildDesktopWorkPanelDescriptor(
 
 type DesktopWorkPanelTargetOpener = {
   openDescriptor(descriptor: WorkPanelItemDescriptor): Promise<unknown>;
+  supportsNativeDocument?: () => boolean;
+  openNativeDocument?: (
+    input: Omit<WorkPanelOpenDocumentInput, "version">,
+  ) => Promise<WorkPanelOpenDocumentResult | null>;
   supportsNativeResource?: () => boolean;
   openNativeResource?: (
     input: Omit<WorkPanelOpenResourceInput, "version">,
@@ -480,7 +542,35 @@ export function buildDesktopNativeResourceRequest(
   };
 }
 
-function bridgeFailureMessage(result: WorkPanelOpenResourceResult): string {
+export function buildDesktopOpenDocumentRequest(
+  intent: OpenTargetIntent,
+): Omit<WorkPanelOpenDocumentInput, "version"> | null {
+  if (intent.kind === "file") {
+    const agentKey = clean(intent.agentKey);
+    const path = normalizeWorkspaceFileRequestPath(intent.path);
+    return agentKey && path
+      ? {
+          source: { kind: "workspace-file", agentKey, path },
+          ...(clean(intent.title) ? { title: clean(intent.title) } : {}),
+        }
+      : null;
+  }
+  const resource = buildDesktopNativeResourceRequest(intent);
+  return resource
+    ? {
+        source: {
+          kind: resource.profile,
+          agentKey: resource.agentKey,
+          chatId: resource.chatId,
+          resourceId: resource.resourceId,
+          relativePath: resource.relativePath,
+        },
+        ...(resource.title ? { title: resource.title } : {}),
+      }
+    : null;
+}
+
+function bridgeFailureMessage(result: WorkPanelOpenResourceResult | WorkPanelOpenDocumentResult): string {
   return result.ok ? "" : result.error.message;
 }
 
@@ -501,27 +591,32 @@ export function openDesktopWorkPanelTarget(input: {
     input.onError?.(`[workpanel] invalid or unsupported ${input.intent.kind} target`);
     return false;
   }
-  const nativeCandidate = input.intent.kind === "artifact" || input.intent.kind === "reference";
+  const nativeCandidate = input.intent.kind === "file" || input.intent.kind === "artifact" || input.intent.kind === "reference";
+  const openNativeDocument = input.workPanel.openNativeDocument?.bind(input.workPanel);
   // DesktopWorkPanelTransport implements this as a class method and reads `this`.
   // Keep its receiver when handing the operation into the async native/fallback flow.
   const openNativeResource = input.workPanel.openNativeResource?.bind(input.workPanel);
-  if (
-    !nativeCandidate ||
-    input.workPanel.supportsNativeResource?.() !== true ||
-    typeof openNativeResource !== "function"
-  ) {
+  const canOpenDocument = input.workPanel.supportsNativeDocument?.() === true && typeof openNativeDocument === "function";
+  const canOpenLegacyResource = input.intent.kind !== "file" &&
+    input.workPanel.supportsNativeResource?.() === true && typeof openNativeResource === "function";
+  if (!nativeCandidate || (!canOpenDocument && !canOpenLegacyResource)) {
     void input.workPanel.openDescriptor(descriptor).catch((error) => {
       input.onError?.(`[workpanel] ${error instanceof Error ? error.message : String(error)}`);
     });
     return true;
   }
 
-  const nativeRequest = buildDesktopNativeResourceRequest(input.intent);
+  const nativeRequest = canOpenDocument
+    ? buildDesktopOpenDocumentRequest(input.intent)
+    : buildDesktopNativeResourceRequest(input.intent);
   if (!nativeRequest) {
     input.onError?.(`[workpanel] invalid native ${input.intent.kind} resource target`);
     return true;
   }
-  void openNativeResource(nativeRequest).then(async (result) => {
+  const nativeOpen = canOpenDocument
+    ? openNativeDocument!(nativeRequest as Omit<WorkPanelOpenDocumentInput, "version">)
+    : openNativeResource!(nativeRequest as Omit<WorkPanelOpenResourceInput, "version">);
+  void nativeOpen.then(async (result) => {
     if (result?.ok) return;
     if (result === null || result.error.code === "unsupported_native_type") {
       await input.workPanel?.openDescriptor(descriptor);
@@ -546,7 +641,20 @@ function viewerTargetFromIntent(intent: OpenTargetIntent): ViewerTarget | null {
     return intent.resourceTarget || buildResourceViewerTargetFromUrl(intent.file);
   }
   if (intent.kind === "artifact" || intent.kind === "reference") {
-    return intent.resourceTarget || null;
+    if (!intent.resourceTarget) return null;
+    const nativeIdentity = buildDesktopNativeResourceRequest(intent);
+    return nativeIdentity
+      ? {
+          ...intent.resourceTarget,
+          source: {
+            kind: nativeIdentity.profile,
+            agentKey: nativeIdentity.agentKey,
+            chatId: nativeIdentity.chatId,
+            resourceId: nativeIdentity.resourceId,
+            relativePath: nativeIdentity.relativePath,
+          },
+        }
+      : intent.resourceTarget;
   }
   return null;
 }

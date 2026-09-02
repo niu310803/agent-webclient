@@ -6,21 +6,21 @@ Artifact 是运行中后端通过 `artifact.publish` 事件发布的资源文件
 ## 核心职责
 - 解析 `artifact.publish` 事件中的文件名、URL、mimeType、size、sha256。
 - 维护 `state.artifacts`，按 artifactId upsert。
-- 支持图片、PDF、HTML、文本、音频、视频直接预览，并把 Office 与未知二进制纳入仅下载 Viewer。
+- 把资源归一为 DocumentTarget，支持文本编辑、只读预览和明确的元信息/下载状态，不把 Office、压缩包或未知二进制伪装为文本。
 - 识别当前 Chat 的 `<relativePath>` ChatScope URL，并只在统一 API client 内加入当前 chatId，通过实际 `/api/resource?file=...` 鉴权 fetch 下载或读取资源。
 
 ## 核心流程
 Timeline tool processor 识别 `artifact.publish`，调用 `normalizePublishedArtifacts` 生成命令，reducer 写入 artifacts。UI 层由 `ArtifactPanel`、`OverviewTab`、`AttachmentCard` 和 `ContentViewerPanel` 渲染列表、内容与下载动作。
 
-Artifact、Reference 与普通附件先归一为 `ResourceViewerTarget`；Workspace File 归一为 `FileViewerTarget`。两者组成判别联合 `ViewerTarget`，分别携带资源 URL 或 Agent + Workspace path，不再经过 Attachment Preview DTO。Sidebar 以 `viewerTabs` 和 `activeViewerKey` 管理 Viewer，`ContentViewerPanel` 只消费 `ViewerTarget` 并按 `type` 选择 `/api/resource` 或 `/api/file` 数据链路。
+Artifact、Reference 与普通附件先归一为 `ResourceViewerTarget`；Workspace File 归一为 `FileViewerTarget`。两者组成判别联合 `ViewerTarget`，再归一成包含语义来源和权威内容类型的 DocumentTarget。Sidebar 以来源 stable identity 管理 tab，`ContentViewerPanel` 只选择 `/api/resource` 或 `/api/file` 数据链路，不再自己推导保存语义。
 
 Artifact 与 Reference 的 Standalone 独立 Viewer 统一使用 `/resource-viewer/:agentKey?chatId=...&file=...`，`file` 来自各自 `resourceTarget.url`，并复用同一 `ContentViewerPanel` 与路由注入的 ChatScope。没有可用资源 URL 时不输出独立链接；旧 `/artifact-view/:agentKey`、`/reference-view/:agentKey` 不保留兼容重定向。Workspace File 继续使用 `/file-viewer/:agentKey?path=...&line=...`，不请求 `/api/chat`，并保留行号定位。
 
-Desktop 的展示所有权按资源类型分流：Main Chat 对 Artifact/Reference 先调用 v5 `openResource`，只提交 `profile + agentKey + chatId + resourceId + relativePath + title`。PNG、JPEG、WebP 由 Desktop 原生 WorkPanel 图片组件读取和编辑，WebClient 不创建 Resource Viewer WebView；宿主明确返回 `unsupported_native_type` 时才调用既有 `openItem` 打开 Resource Viewer。授权失败、资源缺失、身份或路径不匹配不得回退 Viewer。宿主没有 v5 `openResource` 的旧 Program Bundle 继续走旧 Viewer；Standalone 检测不到 Desktop bridge 时保持 Sidebar/独立 Resource Viewer。
+Desktop 的展示所有权按权威内容类型分流：Main Chat、Project、Artifact 与 Reference 统一调用 v6 `openDocument`，只提交语义来源。HTML 与图片由 Desktop 原生 WorkPanel Surface 承载，WebClient 不创建重复 WebView；宿主明确返回 `unsupported_native_type` 时才打开 WebClient Document Surface。授权失败、资源缺失、身份或路径不匹配不得回退。旧 bridge 继续兼容历史 Viewer；Standalone 始终使用 WebClient。
 
 Artifact、Reference、普通附件和回答 Markdown 中的文件链接都以 Viewer 为唯一左键入口。`artifacts/...`、`docs/...`、普通文件名等安全相对路径按当前 `chatId` 解释为 ChatScope 资源，打开 Resource Viewer；绝对 Workspace 路径仍打开 File Viewer。原链接、卡片、Viewer 根节点和 Viewer Tab 暴露右键下载 capability，Viewer 内不显示下载工具栏。左键打开失败、内容加载失败或文件类型不受支持时都不得自动触发下载。
 
-图片、PDF、HTML、文本、音频和视频进入 Viewer 后直接读取并展示；Office、压缩包和其他未知二进制保留 `office` / `unsupported` 状态，不发起资源正文预览请求。Desktop 中的独立 Resource Viewer 与 Main Chat RightSidebar 都会在 `ContentViewerPanel` 内容区中央渲染“在 Finder/文件资源管理器中显示”和“用默认应用打开”，纯浏览器不渲染这组本地操作。按钮只向 Desktop 宿主提交请求 ID、动作、Chat 身份和 `artifacts/...` / `references/...` 相对路径，不提交本地绝对路径；WorkPanel 宿主还会用当前可信 descriptor 对请求身份做等值校验，Main Chat 宿主则用当前 owner Chat 校验。右键下载共用同一鉴权执行器，Workspace 文件先通过 `/api/file` 解析受限 `contentUrl`，ChatScope 资源继续使用原始逻辑 URL。
+Markdown、文本与代码使用 Monaco，PDF 使用 PDF.js，音视频使用浏览器媒体播放器。Office、压缩包和其他未知二进制保留只读元信息状态，不发起伪文本预览。Desktop 中的 Document Surface 可渲染“在 Finder/文件资源管理器中显示”和“用默认应用打开”，纯浏览器不渲染 Desktop-only 操作。宿主请求不携带绝对路径，并由 owner Chat 和当前可信 descriptor 双重校验。
 
 Artifact、普通附件和回答 Markdown 中的受保护图片、PDF、音视频先使用 Bearer/Cookie fetch 获得后端原始 MIME Blob，再创建短生命周期 object URL 交给媒体元素；卸载或 URL 变化时通过 effect cleanup revoke，同时用 AbortController 取消过期请求。HTML Resource Viewer 则通过同一鉴权 API 读取完整文本并以不带 `allow-same-origin` 的 sandbox `srcDoc` 展示，使 Desktop 可注入受限的元素批注消息桥而不放宽 iframe 隔离；HTML iframe 使用无内边距内容槽贴边展示，页面本身的 body margin 仍按原文保留。受 CORS 限制而无法读取文本的外部 HTML 仍可回退到原 sandbox URL 只读预览，但不声明批注 capability。新 `publishedArtifacts[].url` 形如 `artifacts/run_01/poster.png`。历史 `/api/resource?file=...` Markdown 被分类为非法，不再预览或下载；外部 HTTP(S) 图片继续直接使用外链，跨域下载不发送平台 Bearer，`data:` 与 `blob:` 原样展示。
 

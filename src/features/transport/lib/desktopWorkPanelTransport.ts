@@ -2,16 +2,22 @@ import type {
   AgentWebclientWorkPanelBridge,
   WorkPanelBridgeResult,
   WorkPanelItemDescriptor,
+  WorkPanelOpenDocumentInput,
+  WorkPanelOpenDocumentResult,
   WorkPanelOpenResourceInput,
   WorkPanelOpenResourceResult,
 } from "@/features/transport/contracts/generated/agentWebclientBridge";
 import { AGENT_WEBCLIENT_BRIDGE_VERSION } from "@/features/transport/contracts/generated/agentWebclientBridge";
 import { fromDesktopBridgeError } from "@/features/transport/contracts/realtimeTransportErrors";
-import { supportsDesktopNativeResource } from "@/features/transport/lib/desktopBridge";
+import { supportsDesktopNativeDocument, supportsDesktopNativeResource } from "@/features/transport/lib/desktopBridge";
 import { t } from "@/shared/i18n";
 
 export interface WorkPanelTransport {
   openDescriptor(descriptor: WorkPanelItemDescriptor): Promise<WorkPanelBridgeResult>;
+  supportsNativeDocument(): boolean;
+  openNativeDocument(
+    input: Omit<WorkPanelOpenDocumentInput, "version">,
+  ): Promise<WorkPanelOpenDocumentResult | null>;
   supportsNativeResource(): boolean;
   openNativeResource(
     input: Omit<WorkPanelOpenResourceInput, "version">,
@@ -25,6 +31,25 @@ export class DesktopWorkPanelTransport implements WorkPanelTransport {
 
   supportsNativeResource(): boolean {
     return supportsDesktopNativeResource(this.bridge);
+  }
+
+  supportsNativeDocument(): boolean {
+    return supportsDesktopNativeDocument(this.bridge);
+  }
+
+  async openNativeDocument(
+    input: Omit<WorkPanelOpenDocumentInput, "version">,
+  ): Promise<WorkPanelOpenDocumentResult | null> {
+    if (!this.supportsNativeDocument()) return null;
+    const capabilityResult = await this.bridge.getCapabilities();
+    if (!capabilityResult.ok) return capabilityResult;
+    if (!capabilityResult.capabilities.includes("workpanel.open")) {
+      return {
+        ok: false,
+        error: { code: "capability_denied", message: t("workPanel.error.openDenied") },
+      };
+    }
+    return this.bridge.openDocument({ version: AGENT_WEBCLIENT_BRIDGE_VERSION, ...input });
   }
 
   async openNativeResource(

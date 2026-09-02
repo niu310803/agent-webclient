@@ -1,4 +1,7 @@
 import { t } from "@/shared/i18n";
+import type { DocumentContentKind } from "@/shared/types/document";
+
+export type { DocumentContentKind } from "@/shared/types/document";
 
 export type ViewerContentKind =
   | "image"
@@ -10,15 +13,26 @@ export type ViewerContentKind =
   | "office"
   | "unsupported";
 
+export type ResourceDocumentSource = {
+  kind: "artifact" | "reference";
+  agentKey: string;
+  chatId: string;
+  resourceId: string;
+  relativePath: string;
+};
+
 export interface ResourceViewerTarget {
   type: "resource";
   name: string;
   url: string;
   downloadUrl: string;
   contentKind: ViewerContentKind;
+  documentKind?: DocumentContentKind;
   sizeBytes?: number;
   resourceType?: string;
   mimeType?: string;
+  revision?: string;
+  source?: ResourceDocumentSource;
 }
 
 export interface FileViewerTarget {
@@ -27,6 +41,7 @@ export interface FileViewerTarget {
   agentKey: string;
   path: string;
   contentKind: ViewerContentKind;
+  documentKind?: DocumentContentKind;
   line?: number;
 }
 
@@ -37,12 +52,15 @@ export interface ViewerContentDescriptor {
   url?: string;
   mimeType?: string;
   contentKind?: ViewerContentKind;
+  documentKind?: DocumentContentKind;
 }
 
 export interface ResourceViewerInput extends ViewerContentDescriptor {
   downloadUrl?: string;
   sizeBytes?: number;
   resourceType?: string;
+  revision?: string;
+  source?: ResourceDocumentSource;
 }
 
 const audioExtensions = new Set([
@@ -75,30 +93,22 @@ const imageExtensions = new Set([
 ]);
 
 const textExtensions = new Set([
-  "c",
-  "cpp",
-  "css",
   "csv",
-  "go",
-  "html",
-  "java",
-  "js",
-  "json",
   "log",
-  "md",
-  "mjs",
-  "py",
-  "rb",
-  "rs",
-  "sh",
-  "sql",
-  "svg",
-  "ts",
-  "tsx",
   "txt",
-  "xml",
-  "yaml",
-  "yml",
+  "tsv",
+]);
+
+const markdownExtensions = new Set(["md", "markdown", "mdx"]);
+
+const codeExtensions = new Set([
+  "c", "cc", "cpp", "css", "go", "h", "hpp", "ini", "java", "js",
+  "json", "jsx", "mjs", "py", "rb", "rs", "sh", "sql", "toml", "ts",
+  "tsx", "xml", "yaml", "yml",
+]);
+
+const archiveExtensions = new Set([
+  "7z", "bz2", "gz", "rar", "tar", "tgz", "xz", "zip",
 ]);
 
 const videoExtensions = new Set([
@@ -161,17 +171,35 @@ export function detectViewerContentKind(
 ): ViewerContentKind {
   if (input.contentKind) return input.contentKind;
 
+  return viewerContentKindForDocument(detectDocumentContentKind(input));
+}
+
+export function viewerContentKindForDocument(
+  kind: DocumentContentKind,
+): ViewerContentKind {
+  switch (kind) {
+    case "document-image": return "image";
+    case "document-pdf": return "pdf";
+    case "document-html": return "html";
+    case "document-markdown":
+    case "document-text":
+    case "document-code": return "text";
+    case "document-audio": return "audio";
+    case "document-video": return "video";
+    case "document-office": return "office";
+    default: return "unsupported";
+  }
+}
+
+export function detectDocumentContentKind(
+  input: ViewerContentDescriptor,
+): DocumentContentKind {
+  if (input.documentKind) return input.documentKind;
+
   const mimeType = normalizeText(input.mimeType).split(";", 1)[0].trim();
   const extension = getFileExtension(input.name || input.url);
 
-  if (mimeType.startsWith("image/") || imageExtensions.has(extension)) {
-    return "image";
-  }
-
-  if (mimeType === "application/pdf" || extension === "pdf") {
-    return "pdf";
-  }
-
+  // OpenXML is a ZIP container, so Office must win before Archive.
   if (
     officeExtensions.has(extension) ||
     mimeType === "application/msword" ||
@@ -181,7 +209,16 @@ export function detectViewerContentKind(
     mimeType.startsWith("application/vnd.ms-powerpoint.") ||
     mimeType.startsWith("application/vnd.openxmlformats-officedocument.")
   ) {
-    return "office";
+    return "document-office";
+  }
+
+  if (mimeType === "application/pdf" || extension === "pdf") {
+    return "document-pdf";
+  }
+
+  // SVG stays in the image surface even though its payload is XML text.
+  if (mimeType.startsWith("image/") || imageExtensions.has(extension)) {
+    return "document-image";
   }
 
   if (
@@ -191,30 +228,46 @@ export function detectViewerContentKind(
     extension === "htm" ||
     extension === "xhtml"
   ) {
-    return "html";
+    return "document-html";
+  }
+
+  if (mimeType === "text/markdown" || markdownExtensions.has(extension)) {
+    return "document-markdown";
   }
 
   if (mimeType.startsWith("audio/") || audioExtensions.has(extension)) {
-    return "audio";
+    return "document-audio";
   }
 
   if (mimeType.startsWith("video/") || videoExtensions.has(extension)) {
-    return "video";
+    return "document-video";
   }
 
   if (
-    mimeType.startsWith("text/") ||
+    archiveExtensions.has(extension) ||
+    mimeType === "application/zip" ||
+    mimeType === "application/x-7z-compressed" ||
+    mimeType === "application/x-rar-compressed"
+  ) {
+    return "document-archive";
+  }
+
+  if (
     mimeType.includes("json") ||
     mimeType.includes("xml") ||
     mimeType.includes("javascript") ||
     mimeType.includes("ecmascript") ||
     mimeType.includes("yaml") ||
-    textExtensions.has(extension)
+    codeExtensions.has(extension)
   ) {
-    return "text";
+    return "document-code";
   }
 
-  return "unsupported";
+  if (mimeType.startsWith("text/") || textExtensions.has(extension)) {
+    return "document-text";
+  }
+
+  return "document-binary";
 }
 
 export function isViewerContentSupported(kind: ViewerContentKind): boolean {
@@ -234,10 +287,13 @@ export function buildResourceViewerTarget(
     name: String(input.name || "").trim() || t("attachments.unnamedResource"),
     url,
     downloadUrl: String(input.downloadUrl || url).trim(),
+    documentKind: detectDocumentContentKind(input),
     contentKind: detectViewerContentKind(input),
     sizeBytes: Number.isFinite(size) && size >= 0 ? size : undefined,
     resourceType: input.resourceType,
     mimeType: input.mimeType,
+    ...(input.revision ? { revision: input.revision } : {}),
+    ...(input.source ? { source: input.source } : {}),
   };
 }
 
@@ -262,6 +318,7 @@ export function buildResourceViewerTargetFromUrl(
     name,
     url,
     downloadUrl: url,
+    documentKind: detectDocumentContentKind({ name }),
     contentKind: detectViewerContentKind({ name }),
   };
 }
@@ -281,6 +338,7 @@ export function buildFileViewerTarget(input: {
     name,
     agentKey,
     path,
+    documentKind: detectDocumentContentKind({ name }),
     contentKind: detectViewerContentKind({ name }),
     line: Number.isFinite(line) && line > 0 ? Math.floor(line) : undefined,
   };

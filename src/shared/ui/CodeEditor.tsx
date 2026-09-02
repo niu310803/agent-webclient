@@ -19,6 +19,10 @@ export interface CodeEditorProps {
   className?: string;
   options?: MonacoTypes.editor.IStandaloneEditorConstructionOptions;
   onChange?: (value: string) => void;
+  onMount?: (
+    editor: MonacoTypes.editor.IStandaloneCodeEditor,
+    monaco: Monaco,
+  ) => void;
 }
 
 interface FindState {
@@ -402,6 +406,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   className = "",
   options,
   onChange,
+  onMount,
 }) => {
   const editorRef = useRef<MonacoTypes.editor.IStandaloneCodeEditor | null>(
     null,
@@ -436,6 +441,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     monaco: Monaco,
   ) => {
     editorRef.current = editor;
+    onMount?.(editor, monaco);
 
     // 接管 Cmd/Ctrl+F（打开查找）与 Cmd/Ctrl+Shift+H（打开替换）
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF, () => {

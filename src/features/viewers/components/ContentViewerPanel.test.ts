@@ -38,7 +38,7 @@ import {
 } from "@/features/viewers/components/ContentViewerPanel";
 
 describe("ContentViewerPanel", () => {
-	it("renders no inline controls or body for unsupported files", () => {
+	it("renders a read-only metadata and explicit download surface for archives", () => {
 		const html = renderToStaticMarkup(
 			React.createElement(ContentViewerPanel, {
 				target: {
@@ -51,8 +51,10 @@ describe("ContentViewerPanel", () => {
 			}),
 		);
 
-		expect(html).not.toContain("<button");
-		expect(html).not.toContain("content-viewer-body");
+		expect(html).toContain("content-viewer-body");
+		expect(html).toContain("压缩包（只读）");
+		expect(html).toContain("<button");
+		expect(html).toMatch(/下\s*载/u);
 	});
 
 	it("renders the Desktop local action controls inside the viewer content area", () => {

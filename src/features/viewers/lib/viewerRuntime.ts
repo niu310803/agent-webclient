@@ -1,4 +1,4 @@
-import { downloadResource, getAgentFile, getResourceText } from "@/shared/data";
+import { downloadResource, getAgentFile, getResourceDocumentMetadata, getResourceDocumentText, getResourceText } from "@/shared/data";
 import type { ViewerTarget } from "@/features/viewers/lib/viewerTarget";
 import { t } from "@/shared/i18n";
 
@@ -74,4 +74,22 @@ export function readViewerResourceText(
   teamChat = false,
 ): Promise<string> {
   return getResourceText(source, { chatId, teamChat, signal });
+}
+
+export function readViewerResourceDocument(
+  source: string,
+  chatId: string,
+  signal?: AbortSignal,
+  teamChat = false,
+) {
+  return getResourceDocumentText(source, { chatId, teamChat, signal });
+}
+
+export function readViewerResourceMetadata(
+  source: string,
+  chatId: string,
+  signal?: AbortSignal,
+  teamChat = false,
+) {
+  return getResourceDocumentMetadata(source, { chatId, teamChat, signal });
 }

@@ -13,6 +13,9 @@ export function buildResourceViewerTargetFromRoute(input: {
   agentKey: string;
   chatId: string;
   file: string;
+  sourceKind?: string;
+  resourceId?: string;
+  relativePath?: string;
 }): ResourceViewerTarget | null {
   const agentKey = String(input.agentKey || "").trim();
   const chatId = String(input.chatId || "").trim();
@@ -20,7 +23,22 @@ export function buildResourceViewerTargetFromRoute(input: {
   const classification = classifyResourceUrl(file, chatId);
   const allowed = classification.kind === "chat" || classification.kind === "absolute";
   if (!agentKey || !chatId || !file || !allowed) return null;
-  return buildResourceViewerTargetFromUrl(file);
+  const target = buildResourceViewerTargetFromUrl(file);
+  const sourceKind = input.sourceKind === "artifact" || input.sourceKind === "reference"
+    ? input.sourceKind
+    : "";
+  return target && sourceKind && input.resourceId && input.relativePath
+    ? {
+        ...target,
+        source: {
+          kind: sourceKind,
+          agentKey,
+          chatId,
+          resourceId: input.resourceId,
+          relativePath: input.relativePath,
+        },
+      }
+    : target;
 }
 
 export const ResourceViewerPage: React.FC = () => {
@@ -30,7 +48,12 @@ export const ResourceViewerPage: React.FC = () => {
   const agentKey = String(routeAgentKey || "").trim();
   const chatId = String(searchParams.get("chatId") || "").trim();
   const file = String(searchParams.get("file") || "").trim();
-  const target = buildResourceViewerTargetFromRoute({ agentKey, chatId, file });
+  const sourceKind = String(searchParams.get("sourceKind") || "").trim();
+  const resourceId = String(searchParams.get("resourceId") || "").trim();
+  const relativePath = String(searchParams.get("relativePath") || "").trim();
+  const target = buildResourceViewerTargetFromRoute({
+    agentKey, chatId, file, sourceKind, resourceId, relativePath,
+  });
   return (
     <IndependentSurfaceFrame
       kind="resource"

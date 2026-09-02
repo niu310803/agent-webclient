@@ -10,6 +10,7 @@ import type {
   GetAgentsOptions,
   GetChatsOptions,
   AgentFileRequest,
+  DocumentCommitRequest,
   ProjectChangesRequest,
   ProjectDiffRequest,
   ProjectTreeRequest,
@@ -760,6 +761,13 @@ export const dataEndpoints = createEndpointRegistry({
         path: params.path,
         encoding: params.encoding,
       }),
+  }),
+  documentCommit: defineEndpoint<DocumentCommitRequest, DocumentCommitRequest>({
+    key: "document.commit",
+    path: "/api/document/commit",
+    method: "POST",
+    transport: "http",
+    payload: (params) => params,
   }),
   projectTree: defineEndpoint<ProjectTreeRequest, Record<string, unknown>>({
     key: "project.tree",

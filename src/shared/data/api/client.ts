@@ -108,6 +108,8 @@ export interface AgentFileResponse {
   name: string;
   kind: string;
   contentKind: "text" | "binary";
+  documentKind?: import("@/shared/types/document").DocumentContentKind;
+  revision?: string;
   mimeType?: string;
   encoding?: string;
   content?: string;
@@ -117,6 +119,43 @@ export interface AgentFileResponse {
   modifiedUnixMs?: number;
   truncated: boolean;
   contentUrl?: string;
+}
+
+export type DocumentCommitSource =
+  | { kind: "workspace-file"; agentKey: string; path: string }
+  | {
+      kind: "artifact" | "reference";
+      agentKey: string;
+      chatId: string;
+      resourceId: string;
+      relativePath: string;
+    };
+
+export interface DocumentCommitRequest {
+  operation: "document.commit";
+  source: DocumentCommitSource;
+  mode: "overwrite" | "new-artifact";
+  expectedRevision: string;
+  payload: {
+    kind: import("@/shared/types/document").DocumentContentKind;
+    mimeType: string;
+    encoding?: "utf-8";
+    text?: string;
+    dataBase64?: string;
+  };
+}
+
+export interface DocumentCommitResponse {
+  sourceKind: "workspace-file" | "artifact";
+  agentKey: string;
+  path?: string;
+  chatId?: string;
+  artifactId?: string;
+  resourceId?: string;
+  relativePath?: string;
+  revision: string;
+  documentKind: import("@/shared/types/document").DocumentContentKind;
+  mimeType?: string;
 }
 
 export interface ProjectTreeEntry {
@@ -2001,6 +2040,91 @@ export async function getResourceText(
   return response.text();
 }
 
+export interface ResourceDocumentTextResponse {
+  content: string;
+  revision: string;
+  documentKind?: import("@/shared/types/document").DocumentContentKind;
+  mimeType?: string;
+}
+
+export type ResourceDocumentMetadataResponse = Omit<ResourceDocumentTextResponse, "content">;
+
+function resourceDocumentMetadata(response: Response): ResourceDocumentMetadataResponse {
+  const rawKind = String(response.headers.get("X-ZenMind-Document-Kind") || "").trim();
+  const allowedKinds = new Set([
+    "document-html", "document-image", "document-markdown", "document-text",
+    "document-code", "document-pdf", "document-office", "document-audio",
+    "document-video", "document-archive", "document-binary",
+  ]);
+  return {
+    revision: String(response.headers.get("X-ZenMind-Resource-Revision") || "").trim(),
+    mimeType: String(response.headers.get("Content-Type") || "").split(";", 1)[0].trim(),
+    ...(allowedKinds.has(rawKind)
+      ? { documentKind: rawKind as ResourceDocumentMetadataResponse["documentKind"] }
+      : {}),
+  };
+}
+
+export async function getResourceDocumentMetadata(
+  path: string,
+  options: { signal?: AbortSignal; chatId?: string; teamChat?: boolean } = {},
+): Promise<ResourceDocumentMetadataResponse> {
+  const target = getResourceRequestTarget(
+    path,
+    options.chatId || "",
+    t("contentViewer.error.loadText"),
+    { teamChat: options.teamChat },
+  );
+  const response = await requestWithAuth(target.fetchUrl, {
+    method: "HEAD",
+    signal: options.signal,
+    jsonContentType: false,
+    authFailureSource: "download",
+    includePlatformAuth: target.requiresPlatformAuth,
+  });
+  if (!response.ok) {
+    throw new ApiError(t("contentViewer.error.loadText"), { status: response.status });
+  }
+  return resourceDocumentMetadata(response);
+}
+
+export async function getResourceDocumentText(
+  path: string,
+  options: { signal?: AbortSignal; chatId?: string; teamChat?: boolean } = {},
+): Promise<ResourceDocumentTextResponse> {
+  const target = getResourceRequestTarget(
+    path,
+    options.chatId || "",
+    t("contentViewer.error.loadText"),
+    { teamChat: options.teamChat },
+  );
+  const response = await requestWithAuth(target.fetchUrl, {
+    method: "GET",
+    signal: options.signal,
+    jsonContentType: false,
+    authFailureSource: "download",
+    includePlatformAuth: target.requiresPlatformAuth,
+  });
+  if (!response.ok) {
+    const fallbackMessage = t("api.loadResourceTextFailedWithStatus", {
+      status: response.status,
+    });
+    const rawText = await response.text();
+    const error = getErrorMessageFromText(rawText, fallbackMessage, response.status);
+    throw new ApiError(error.message, {
+      status: response.status,
+      code: error.code,
+      data: error.data,
+      platformError: error.platformError,
+    });
+  }
+  const metadata = resourceDocumentMetadata(response);
+  return {
+    content: await response.text(),
+    ...metadata,
+  };
+}
+
 export async function getResourceBlob(
   path: string,
   options: { signal?: AbortSignal; chatId?: string; teamChat?: boolean } = {},
@@ -2206,6 +2330,15 @@ export function getAgentFile(
   return requestJson<AgentFileResponse>(
     withQuery(dataEndpoints.agentFile.path, query),
   );
+}
+
+export function commitDocument(
+  request: DocumentCommitRequest,
+): Promise<ApiResponse<DocumentCommitResponse>> {
+  return requestJson<DocumentCommitResponse>(dataEndpoints.documentCommit.path, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
 }
 
 export async function getProjectTree(

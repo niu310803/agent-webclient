@@ -7,6 +7,7 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@pierre/diffs/react$': '<rootDir>/src/__mocks__/pierreDiffsReact.ts',
+    '^monaco-editor$': '<rootDir>/src/__mocks__/monacoEditor.ts',
     '\\.svg$': '<rootDir>/src/shared/icons/__mocks__/svgMock.ts',
     '\\.module\\.css$': '<rootDir>/src/__mocks__/styleMock.ts',
     '\\.css$': '<rootDir>/src/__mocks__/styleMock.ts',

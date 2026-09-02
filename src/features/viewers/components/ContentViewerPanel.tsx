@@ -1,19 +1,24 @@
 import React from "react";
 import {
+  commitDocument,
   getAgentFile,
   type AgentFileResponse,
 } from "@/shared/data";
 import {
   downloadViewerTarget,
   limitViewerText,
-  readViewerResourceText,
+  readViewerResourceDocument,
+  readViewerResourceMetadata,
 } from "@/features/viewers/lib/viewerRuntime";
 import {
+  detectDocumentContentKind,
   detectViewerContentKind,
   isViewerContentSupported,
   type ViewerContentKind,
   type ViewerTarget,
+  viewerContentKindForDocument,
 } from "@/features/viewers/lib/viewerTarget";
+import type { DocumentContentKind } from "@/shared/types/document";
 import { t } from "@/shared/i18n";
 import { Button, Image, message } from "antd";
 import { useAppState } from "@/app/state/AppContext";
@@ -33,6 +38,19 @@ import {
   type DesktopCurrentResourceAction,
   type DesktopCurrentResourceIdentity,
 } from "@/shared/data/desktop/desktopCurrentResourceAction";
+import { DocumentTextEditor } from "@/features/viewers/components/DocumentTextEditor";
+import { BrowserImageEditor } from "@/features/viewers/components/BrowserImageEditor";
+import {
+  hasDesktopHostBridge,
+  postDesktopHostMessage,
+} from "@/shared/data/desktop/desktopHostBridge";
+
+const PdfDocumentViewer = process.env.NODE_ENV === "test"
+  ? ({ url, title }: { url: string; title: string }) => <iframe src={url} title={title} />
+  : React.lazy(async () => {
+      const module = await import("@/features/viewers/components/PdfDocumentViewer");
+      return { default: module.PdfDocumentViewer };
+    });
 
 const CONTENT_VIEWER_PANEL_CLASS_NAME =
   "content-viewer-panel tw:flex tw:h-full tw:flex-col";
@@ -129,6 +147,9 @@ export function resolveFileViewerContentKind(
   if (!response) {
     return fallbackKind;
   }
+  if (response.documentKind) {
+    return viewerContentKindForDocument(response.documentKind);
+  }
   const detectedKind = detectViewerContentKind({
     name: response.name,
     mimeType: response.mimeType,
@@ -140,6 +161,21 @@ export function resolveFileViewerContentKind(
     return "text";
   }
   return detectedKind;
+}
+
+export function resolveViewerDocumentKind(
+  response: AgentFileResponse | null,
+  target: ViewerTarget,
+  resourceKind?: DocumentContentKind,
+): DocumentContentKind {
+  return response?.documentKind
+    || resourceKind
+    || target.documentKind
+    || detectDocumentContentKind({
+      name: response?.name || target.name,
+      mimeType: response?.mimeType || (target.type === "resource" ? target.mimeType : undefined),
+      contentKind: response ? undefined : target.contentKind,
+    });
 }
 
 export function resolveFileViewerHtml(
@@ -268,6 +304,14 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   const [workspaceFile, setWorkspaceFile] =
     React.useState<AgentFileResponse | null>(null);
   const [textContent, setTextContent] = React.useState("");
+  const [savedTextContent, setSavedTextContent] = React.useState("");
+  const [documentRevision, setDocumentRevision] = React.useState("");
+  const [resourceDocumentKind, setResourceDocumentKind] =
+    React.useState<DocumentContentKind | undefined>();
+  const [resourceMimeType, setResourceMimeType] = React.useState("");
+  const [documentSaving, setDocumentSaving] = React.useState(false);
+  const [documentAnnotationCount, setDocumentAnnotationCount] = React.useState(0);
+  const [browserImageState, setBrowserImageState] = React.useState({ dirty: false, busy: false, annotationCount: 0 });
   const [resourceHtmlContent, setResourceHtmlContent] = React.useState<string | null>(null);
   const [textTruncated, setTextTruncated] = React.useState(false);
   const [textLoading, setTextLoading] = React.useState(false);
@@ -290,10 +334,18 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
     workspaceFile.requestedPath === fileRequest.path
       ? workspaceFile
       : null;
-  const contentKind = resolveFileViewerContentKind(
+  const fallbackContentKind = resolveFileViewerContentKind(
     workspaceFileResponse,
     target.contentKind,
   );
+  const documentKind = resolveViewerDocumentKind(
+    workspaceFileResponse,
+    target,
+    resourceDocumentKind,
+  );
+  const contentKind = workspaceFileResponse?.documentKind || resourceDocumentKind
+    ? viewerContentKindForDocument(documentKind)
+    : fallbackContentKind;
   const viewerUrl = fileRequest
     ? workspaceFileResponse?.contentUrl || ""
     : target.type === "resource" ? target.url : "";
@@ -359,6 +411,13 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   React.useEffect(() => {
     setWorkspaceFile(null);
     setResourceHtmlContent(null);
+    setSavedTextContent("");
+    setDocumentRevision("");
+    setResourceDocumentKind(undefined);
+    setResourceMimeType("");
+    setDocumentSaving(false);
+    setDocumentAnnotationCount(0);
+    setBrowserImageState({ dirty: false, busy: false, annotationCount: 0 });
 
     if (fileRequest) {
       let disposed = false;
@@ -372,7 +431,10 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
           if (disposed) return;
           const file = response.data;
           setWorkspaceFile(file);
-          setTextContent(file.contentKind === "text" ? file.content || "" : "");
+          const content = file.contentKind === "text" ? file.content || "" : "";
+          setTextContent(content);
+          setSavedTextContent(content);
+          setDocumentRevision(String(file.revision || ""));
           setTextTruncated(file.truncated);
         })
         .catch((error: unknown) => {
@@ -410,13 +472,20 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
     setTextContent("");
     setTextTruncated(false);
 
-    void readViewerResourceText(target.url, chatId, controller.signal, teamChat)
-      .then((content) => {
-        const limitedText = limitViewerText(content);
-        if (target.contentKind === "html") {
+    void readViewerResourceDocument(target.url, chatId, controller.signal, teamChat)
+      .then((document) => {
+        const limitedText = limitViewerText(document.content);
+        setDocumentRevision(document.revision || target.revision || "");
+        setResourceDocumentKind(document.documentKind);
+        setResourceMimeType(document.mimeType || target.mimeType || "");
+        const loadedKind = document.documentKind || target.documentKind;
+        if (loadedKind === "document-html" || target.contentKind === "html") {
           setResourceHtmlContent(limitedText.content);
+          setTextContent(limitedText.content);
+          setSavedTextContent(limitedText.content);
         } else {
           setTextContent(limitedText.content);
+          setSavedTextContent(limitedText.content);
         }
         setTextTruncated(limitedText.truncated);
       })
@@ -438,6 +507,36 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
 
     return () => controller.abort();
   }, [chatId, fileRequest, target, teamChat]);
+
+  React.useEffect(() => {
+    if (target.type !== "resource") return;
+    const controller = new AbortController();
+    void readViewerResourceMetadata(target.url, chatId, controller.signal, teamChat)
+      .then(async (metadata) => {
+        if (controller.signal.aborted) return;
+        setDocumentRevision(metadata.revision || target.revision || "");
+        setResourceDocumentKind(metadata.documentKind);
+        setResourceMimeType(metadata.mimeType || target.mimeType || "");
+        const textKind = metadata.documentKind === "document-html" ||
+          metadata.documentKind === "document-markdown" ||
+          metadata.documentKind === "document-text" ||
+          metadata.documentKind === "document-code";
+        if (!textKind || target.contentKind === "text" || target.contentKind === "html") return;
+        setTextLoading(true);
+        const document = await readViewerResourceDocument(target.url, chatId, controller.signal, teamChat);
+        if (controller.signal.aborted) return;
+        const limited = limitViewerText(document.content);
+        setTextContent(limited.content);
+        setSavedTextContent(limited.content);
+        setTextTruncated(limited.truncated);
+        if (document.documentKind === "document-html") setResourceHtmlContent(limited.content);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!controller.signal.aborted) setTextLoading(false);
+      });
+    return () => controller.abort();
+  }, [chatId, target, teamChat]);
 
   React.useEffect(() => {
     if (
@@ -468,6 +567,92 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
     });
   }, [contentKind, target, textContent, textError, textLoading]);
 
+  const editableTextDocument =
+    documentKind === "document-html" ||
+    documentKind === "document-markdown" ||
+    documentKind === "document-text" ||
+    documentKind === "document-code";
+  const resourceSource = target.type === "resource" ? target.source : undefined;
+  const imageMimeType = workspaceFileResponse?.mimeType || (target.type === "resource" ? target.mimeType : "") || "";
+  const imageCommitSource = target.type === "file"
+    ? { kind: "workspace-file" as const, agentKey: target.agentKey, path: target.path }
+    : resourceSource;
+  const browserImageEditable = !hasDesktopHostBridge() && contentKind === "image" &&
+    ["image/png", "image/jpeg", "image/webp"].includes(imageMimeType) &&
+    Boolean(imageCommitSource && documentRevision);
+  const documentDirty = editableTextDocument && textContent !== savedTextContent;
+  const canSaveDocument = editableTextDocument && !textTruncated && Boolean(
+    documentRevision && (target.type === "file" || resourceSource),
+  );
+  const canOverwriteArtifact = resourceSource?.kind === "artifact";
+  const handleDocumentSave = React.useCallback(async (
+    mode: "overwrite" | "new-artifact",
+  ) => {
+    if (!canSaveDocument || documentSaving || !documentRevision) return;
+    setDocumentSaving(true);
+    try {
+      const mimeType = workspaceFileResponse?.mimeType
+        || resourceMimeType
+        || (documentKind === "document-markdown" ? "text/markdown" : "text/plain");
+      const source = target.type === "file"
+        ? { kind: "workspace-file" as const, agentKey: target.agentKey, path: target.path }
+        : resourceSource;
+      if (!source) return;
+      const response = await commitDocument({
+        operation: "document.commit",
+        source,
+        mode: target.type === "file" ? "overwrite" : mode,
+        expectedRevision: documentRevision,
+        payload: {
+          kind: documentKind,
+          mimeType,
+          encoding: "utf-8",
+          text: textContent,
+        },
+      });
+      setSavedTextContent(textContent);
+      if (mode === "overwrite" || target.type === "file") {
+        setDocumentRevision(response.data.revision);
+      }
+      message.success(t("contentViewer.save.success"));
+    } catch (error: unknown) {
+      const status = typeof error === "object" && error !== null && "status" in error
+        ? Number((error as { status?: unknown }).status)
+        : 0;
+      message.error(
+        status === 409
+          ? t("contentViewer.save.conflict")
+          : resolveContentViewerErrorMessage(error, t("contentViewer.error.loadText")),
+      );
+    } finally {
+      setDocumentSaving(false);
+    }
+  }, [
+    canSaveDocument,
+    documentKind,
+    documentRevision,
+    documentSaving,
+    resourceMimeType,
+    resourceSource,
+    target,
+    textContent,
+    workspaceFileResponse?.mimeType,
+  ]);
+
+  React.useEffect(() => {
+    if (!hasDesktopHostBridge() || (!editableTextDocument && !browserImageEditable)) return;
+    postDesktopHostMessage({
+      type: "desktop:agent-webclient:document-state",
+      requestId: `document_state_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      dirty: editableTextDocument ? documentDirty : browserImageState.dirty,
+      busy: editableTextDocument ? documentSaving : browserImageState.busy,
+      annotationCount: editableTextDocument ? documentAnnotationCount : browserImageState.annotationCount,
+      targetKey: target.type === "file"
+        ? `file:${target.agentKey}:${target.path}`
+        : `resource:${target.url}`,
+    });
+  }, [browserImageEditable, browserImageState, documentAnnotationCount, documentDirty, documentSaving, editableTextDocument, target]);
+
   const targetLine =
     target.type === "file" && Number.isFinite(target.line) && Number(target.line) > 0
       ? Math.floor(Number(target.line))
@@ -476,7 +661,9 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
     () => buildViewerTextLines(textContent, targetLine),
     [targetLine, textContent],
   );
-  const viewable = isViewerContentSupported(contentKind);
+  const metadataOnly = documentKind === "document-office" ||
+    documentKind === "document-archive" || documentKind === "document-binary";
+  const viewable = isViewerContentSupported(contentKind) || metadataOnly;
   const desktopLocalResourceIdentity = target.type === "resource"
     ? resolveDesktopCurrentResourceIdentity(chatId, target.url)
     : null;
@@ -517,7 +704,17 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
         ? <DesktopLocalResourceActions resource={desktopLocalResourceIdentity} />
         : null}
       {viewable ? <div className={CONTENT_VIEWER_BODY_CLASS_NAME}>
-        {contentKind === "image" && mediaUrl ? (
+        {contentKind === "image" && mediaUrl && browserImageEditable && imageCommitSource ? (
+          <BrowserImageEditor
+            url={mediaUrl}
+            name={viewerName}
+            mimeType={imageMimeType as "image/png" | "image/jpeg" | "image/webp"}
+            source={imageCommitSource}
+            revision={documentRevision}
+            onRevisionChange={setDocumentRevision}
+            onStateChange={setBrowserImageState}
+          />
+        ) : contentKind === "image" && mediaUrl ? (
           <div className="content-viewer-image-review-host tw:inline-block tw:max-w-full tw:self-start">
             <Image
               className="content-viewer-image"
@@ -529,11 +726,28 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
         ) : null}
 
         {contentKind === "pdf" && mediaUrl ? (
-          <iframe
-            className={CONTENT_VIEWER_FRAME_CLASS_NAME}
-            src={mediaUrl}
-            title={viewerName}
-          />
+          <React.Suspense fallback={<div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>{t("contentViewer.pdf.loading")}</div>}>
+            <PdfDocumentViewer url={mediaUrl} title={viewerName} />
+          </React.Suspense>
+        ) : null}
+
+        {metadataOnly ? (
+          <div className="tw:flex tw:min-h-[360px] tw:flex-1 tw:items-center tw:justify-center tw:p-6">
+            <div className="tw:w-full tw:max-w-md tw:rounded-xl tw:border tw:border-line-soft tw:bg-bg-elev-1 tw:p-5">
+              <div className="tw:mb-4 tw:text-base tw:font-semibold tw:text-ink-1">{viewerName}</div>
+              <dl className="tw:grid tw:grid-cols-[auto_1fr] tw:gap-x-4 tw:gap-y-2 tw:text-sm">
+                <dt className="tw:text-ink-muted">{t("contentViewer.metadata.type")}</dt>
+                <dd>{t(`contentViewer.metadata.${documentKind}`)}</dd>
+                <dt className="tw:text-ink-muted">MIME</dt>
+                <dd className="tw:break-all">{workspaceFileResponse?.mimeType || (target.type === "resource" ? target.mimeType : "") || "application/octet-stream"}</dd>
+                <dt className="tw:text-ink-muted">{t("contentViewer.metadata.size")}</dt>
+                <dd>{workspaceFileResponse?.sizeBytes ?? (target.type === "resource" ? target.sizeBytes : undefined) ?? "–"}</dd>
+              </dl>
+              <Button className="tw:mt-5" type="primary" onClick={() => void handleDownload()}>
+                {t("contentViewer.action.download")}
+              </Button>
+            </div>
+          </div>
         ) : null}
 
         {contentKind === "html" ? (
@@ -558,6 +772,22 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
             <div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>
               {t("contentViewer.text.truncated")}
             </div>
+          ) : editableTextDocument ? (
+            <DocumentTextEditor
+              value={textContent}
+              name={viewerName}
+              kind={documentKind}
+              chatId={chatId}
+              teamChat={teamChat}
+              saving={documentSaving}
+              dirty={documentDirty}
+              canSave={canSaveDocument}
+              canOverwriteArtifact={canOverwriteArtifact}
+              revision={documentRevision}
+              onAnnotationCountChange={setDocumentAnnotationCount}
+              onChange={setTextContent}
+              onSave={(mode) => void handleDocumentSave(mode)}
+            />
           ) : htmlReview.srcDoc !== null ? (
             <iframe
               ref={htmlReview.frameRef}
@@ -583,6 +813,22 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
             <div className={CONTENT_VIEWER_STATUS_CLASS_NAME}>
               {textError}
             </div>
+          ) : editableTextDocument && !textTruncated ? (
+            <DocumentTextEditor
+              value={textContent}
+              name={viewerName}
+              kind={documentKind}
+              chatId={chatId}
+              teamChat={teamChat}
+              saving={documentSaving}
+              dirty={documentDirty}
+              canSave={canSaveDocument}
+              canOverwriteArtifact={canOverwriteArtifact}
+              revision={documentRevision}
+              onAnnotationCountChange={setDocumentAnnotationCount}
+              onChange={setTextContent}
+              onSave={(mode) => void handleDocumentSave(mode)}
+            />
           ) : targetLine || showLineNumbers ? (
             <pre
               ref={textContainerRef}

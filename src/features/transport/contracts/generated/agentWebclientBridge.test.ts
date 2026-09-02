@@ -19,7 +19,7 @@ describe("generated Agent WebClient bridge contract", () => {
   it("keeps the canonical version, globals, source header and mirror hash", () => {
     const source = readFileSync(join(__dirname, "agentWebclientBridge.ts"), "utf8");
     const canonicalSource = source.replace(/\r\n/gu, "\n");
-    expect(AGENT_WEBCLIENT_BRIDGE_VERSION).toBe(5);
+    expect(AGENT_WEBCLIENT_BRIDGE_VERSION).toBe(6);
     expect(AGENT_WEBCLIENT_PLATFORM_FRAME_PORT_TRANSPORT_VERSION).toBe(2);
     expect(AGENT_WEBCLIENT_PLATFORM_FRAME_PORT_GLOBAL).toBe(
       "__AGENT_WEBCLIENT_PLATFORM_FRAME_PORT__",
@@ -39,10 +39,10 @@ describe("generated Agent WebClient bridge contract", () => {
     );
     expect(isAgentWebclientSurfaceKind("agent-management")).toBe(true);
     expect(source).toContain(
-      "sha256:7f1d9e07012aab366a39895da2fc347a0e6457e4be23fd913e6f0e383b39fb84",
+      "sha256:2a14ee41c46705c4adf943c9625f6b9935a8d87f85ea9d77ac17496347880da7",
     );
     expect(createHash("sha256").update(canonicalSource).digest("hex")).toBe(
-      "c7a87da52fa72255f467c397baddba5877185df451ee82244bea2071803e8647",
+      "aa1232c0e0d7a6ff687752dd34401bef39890f1a62c54f97e33a9032bb384473",
     );
   });
 

@@ -42,6 +42,12 @@ export function supportsDesktopNativeResource(
   return Boolean(value) && typeof (value as { openResource?: unknown }).openResource === "function";
 }
 
+export function supportsDesktopNativeDocument(
+  value: AgentWebclientWorkPanelBridge | null | undefined,
+): value is AgentWebclientWorkPanelBridge {
+  return Boolean(value) && typeof (value as { openDocument?: unknown }).openDocument === "function";
+}
+
 export function readDesktopBridges(): {
   platformFramePort: DesktopPlatformFramePort | null;
   workPanel: AgentWebclientWorkPanelBridge | null;

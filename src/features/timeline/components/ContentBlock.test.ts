@@ -190,6 +190,7 @@ describe("ContentBlock", () => {
 				url: href,
 				downloadUrl: href,
 				contentKind: "text",
+				documentKind: "document-markdown",
 			},
 		});
 	});

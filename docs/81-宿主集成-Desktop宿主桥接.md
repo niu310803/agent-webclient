@@ -1,7 +1,7 @@
 # Desktop宿主桥接
 
 ## 当前状态
-WebClient 已消费 v5 canonical generated Desktop contract，通过固定只读全局 `__AGENT_WEBCLIENT_PLATFORM_FRAME_PORT__` 与 `__AGENT_WEBCLIENT_WORKPANEL_BRIDGE__` 接入 Main Broker 和 WorkPanel。Frame Port transport version 固定为 2；现有 Desktop context、截图、文件系统和右键桥接继续服务各自能力，但不作为 realtime fallback。
+WebClient 已消费 v6 canonical generated Desktop contract，通过固定只读全局 `__AGENT_WEBCLIENT_PLATFORM_FRAME_PORT__` 与 `__AGENT_WEBCLIENT_WORKPANEL_BRIDGE__` 接入 Main Broker 和 WorkPanel。Frame Port transport version 固定为 2；现有 Desktop context、截图、文件系统和右键桥接继续服务各自能力，但不作为 realtime fallback。
 
 ## 核心职责
 - 严格判断 `DESKTOP_APP`：只接受布尔 `true` 或精确字符串 `"true"`。
@@ -12,9 +12,9 @@ WebClient 已消费 v5 canonical generated Desktop contract，通过固定只读
 - 在 query payload 中补充宿主提供的上下文。
 
 ## 核心流程
-Provider 仅在 Desktop Frame Port 结构和 transport version 有效时渲染页面。surface/capability denial 作为相同 request id 的标准 Platform error 留在具体操作中。`DesktopFramePortDriver` 把 Session 的结构化 frame/state/close 交给共享 `PlatformFrameClient`，不依赖 `WsClient`、socket factory 或字符串消息；WorkPanel 保持独立 `getCapabilities()` 宿主查询和逐请求授权。普通 Surface 继续只接收 canonical descriptor；Artifact/Reference 额外使用语义化 `openResource`，且成功结果只包含 `workspaceId + itemId + renderer:native-image`，不接收 handle、绝对路径或内部 descriptor。
+Provider 仅在 Desktop Frame Port 结构和 transport version 有效时渲染页面。surface/capability denial 作为相同 request id 的标准 Platform error 留在具体操作中。`DesktopFramePortDriver` 把 Session 的结构化 frame/state/close 交给共享 `PlatformFrameClient`，不依赖 `WsClient`、socket factory 或字符串消息；WorkPanel 保持独立 `getCapabilities()` 宿主查询和逐请求授权。Workspace File、Artifact 和 Reference 统一使用语义化 `openDocument`，成功结果只包含 WorkPanel item 身份与 `native-html | native-image` renderer，不接收 handle、绝对路径、revision 或内部 descriptor。
 
-`openResource` 只针对 ChatScope `artifacts/...` 与 `references/...`。WebClient 逐段解码规范 URI 后提交相对路径，并拒绝绝对路径、控制字符、错误前缀、单/双重编码 traversal。宿主以真实 sender 的 owner Chat 重新校验。只有稳定错误 `unsupported_native_type` 允许 WebClient 再调用 `openItem`；`capability_denied`、`target_unavailable`、`invalid_request` 等都停留在原错误，不创建 Resource Viewer。旧 bridge 没有 `openResource` 方法时保留 v4 Viewer 行为，Standalone 不进入该分支。
+`openDocument` 使用 `workspace-file | artifact | reference` 来源联合。WebClient 对 descriptor 做结构和编码检查，宿主以真实 sender 的 owner Chat 与权威存储重新校验。只有稳定错误 `unsupported_native_type` 允许 WebClient 打开自己的 Document Surface；`capability_denied`、`target_unavailable`、`invalid_request` 等都停留在原错误。旧 bridge 方法只用于历史 bundle 兼容，Standalone 不进入 Desktop 分支。
 
 Resource Viewer 内的 Office/未知文档本地操作走独立的 Service WebView 消息：请求包含 `requestId`、`reveal | open-default`、`chatId`、profile 和受限相对路径，不携带本地绝对路径。Desktop Main Chat Surface 以当前 owner Chat 校验请求，WorkPanel Surface 还要求请求与当前可信 Artifact/Reference descriptor 完全一致，再通过类型化 preload/IPC 调用 Main；响应只返回 `ok`、稳定错误码和安全提示。该能力不修改 Agent WebClient Bridge 版本，也不新增 Agent Platform HTTP 接口。
 
@@ -23,6 +23,8 @@ Bridge 全局可见早于 Desktop surface 完成登记属于允许的启动窗�
 Frame Port 只承载 Platform `request/response/stream/push/error`。新 query 绝不发送预造 `runId`；关联 stream bootstrap identity 解析后释放 identity 前事件。Main Chat、Copilot Chat、Kanban Chat 至多一个 active；Page Visibility 驱动 inactive detach 和 active `lastSeq` attach。Desktop WorkPanel 为 Overview、Debug、BTW、Source、Planning、Artifact、Reference、File、Project、Skill 分别使用判别式 context 和 canonical 路由，不共享全可选 context。Desktop 只依据宿主持有的结构化 surface role 映射 Frame Port 身份，不从 route、查询参数或文件路径推断；File、File Diff、Source、Artifact、Reference、Planning、Skill 等 management surface 可发送各自所需的普通 request/response，但不获得 query、attach 或 BTW live Run lease。File descriptor 保留用户请求的相对或绝对路径，不依赖 `currentWorker.workspaceDir` 做打开前判权；File Diff 的 `/workspace/...` 事件路径可在独立 Overview 中安全归一化为项目相对路径。Artifact/Reference 保留各自 module/context，但共用 Resource route。Skill descriptor 只携带非空 `key`，不继承 Chat、Agent、路径或凭据上下文。Bridge 只负责先打开面板，随后由面板请求 Platform。激活且归属于 Main Chat 的 Overview/Debug 可以发送普通 attach 帧，但 Desktop 只把它注册为 Main Chat 当前 visible Run 的本地只读 consumer，并在本地拦截 detach，不产生第二个上游 observer。本地 replay 游标过期时，Frame Port 保留 `seq_expired`、可重试标记和不含敏感数据的游标窗口诊断；WebClient 重新读取 `/api/chat` 后使用新快照游标订阅。只有激活的 Main Chat 或 BTW 子 Surface 可以发送 `/api/btw`/BTW attach，BTW 子 Surface不能发送 `/api/query`；其他独立 Surface 只做 chat replay 或文件读取。
 
 Main Chat 的 active 恢复只能在 URL 中 canonical `chatId` 与当前已投影状态的 `chatId` 相同时执行。Chat 路由切换期间两者不同，WebClient 不得使用旧状态 `forceReload` 恢复旧 Chat；应只保留新路由触发的正常 `/api/chat` 加载。
+
+Desktop route bridge 是 Main Chat SPA 导航的权威命令。浏览器物理 `window.location` 可能已被宿主更新，而 React Router 仍持有旧 `agentKey/chatId/newChat`，因此物理 URL 只能用于宿主观测，不能用于 WebClient bridge 去重。每条 Main Chat route 命令携带 `routeRevision + target`；WebClient 必须以 `useLocation()` 的 Router location 判断是否已到达目标，Router 不匹配时即使地址栏相同也执行 replace。只有 `useLocation()` 精确匹配后，WebClient 才通过隔离的 page-to-preload 事件回传 `desktopRouteApplied(routeRevision, routerLocation)`；Router 已匹配的重复 payload 也要立即 ACK，而不是把 IPC 收到或 `navigate()` 调用当作完成。新 revision 会替换旧 pending ACK，迟到的旧 Router render 不得确认新目标。DevTools 以 `[desktop-route] bridge-received/router-navigate/router-ack` 同时输出 revision、Router target 与 physical location。这样 Cmd+K、新建按钮和 New Chat 内切换 Agent 都会先进入正确的 `AgentChatShell` 状态，再执行 worker 切换与空白会话 reset；Desktop 也能在 ACK 缺失时可靠 reload，而不会因地址栏已变化误判完成。
 
 Main Chat 从已有 Chat 发起“新对话重问”时，WebClient 通过一次性 `desktop:agent-webclient:new-chat:prepare` 请求提交 `requestId + agentKey + sourceChatId + newChat`。只有匹配的 `desktop:agent-webclient:new-chat:prepared` 成功响应才允许重置和发送。响应表示 Desktop 已把外层 route 与 guest URL 切换到同一 `newChat`，并以无 `ownerChatId` 的 active Main Chat Surface 完成登记；它不表示 query 或 Chat 已创建。失败、超时、来源变化或重复事务不得降级为直接发送。
 
