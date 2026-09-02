@@ -47,9 +47,8 @@ import {
   Popover,
   Tooltip,
 } from "antd";
-import type { InputRef } from "antd";
+import { InputRef, Skeleton } from "antd";
 import {
-  AIRunEventTypeEnum,
   type Agent,
   type ConversationSurfaceMode,
   type TimelineNode,
@@ -146,10 +145,9 @@ const VIRTUOSO_CLASS_NAME = [
 ].join(" ");
 const CONVERSATION_TRANSITION_OVERLAY_CLASS_NAME =
   "conversation-transition-overlay tw:absolute tw:inset-0 tw:z-20 tw:grid tw:place-items-center tw:overflow-hidden tw:bg-bg-base tw:px-6";
+const CONVERSATION_TRANSITION_OVERLAY_DELAY_MS = 300;
 const CONVERSATION_TRANSITION_SKELETON_CLASS_NAME =
-  "conversation-transition-skeleton tw:flex tw:w-full tw:max-w-[760px] tw:flex-col tw:gap-5";
-const CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME =
-  "tw:h-16 tw:animate-pulse tw:rounded-xl tw:bg-[color-mix(in_srgb,var(--line-soft)_58%,transparent)]";
+  "conversation-transition-skeleton tw:w-full tw:max-w-[760px] tw:self-start tw:pt-[20px]";
 const CONVERSATION_TRANSITION_ERROR_CLASS_NAME =
   "conversation-transition-error tw:flex tw:max-w-[420px] tw:flex-col tw:items-center tw:gap-3 tw:text-center";
 const TIMELINE_STACK_CLASS_NAME =
@@ -724,7 +722,10 @@ function buildVirtualItemsDataSignature(
 }
 
 function readRootFontSize(): string {
-  if (typeof document === "undefined" || typeof getComputedStyle !== "function") {
+  if (
+    typeof document === "undefined" ||
+    typeof getComputedStyle !== "function"
+  ) {
     return "";
   }
   return getComputedStyle(document.documentElement).fontSize;
@@ -789,15 +790,17 @@ function ConversationTransitionOverlay({
           </UiButton>
         </div>
       ) : (
-        <div
-          className={CONVERSATION_TRANSITION_SKELETON_CLASS_NAME}
-          aria-hidden="true"
-        >
-          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-2/3`} />
-          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-5/6`} />
-          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-3/4`} />
-          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-1/2`} />
-        </div>
+        <Flex className={CONVERSATION_TRANSITION_SKELETON_CLASS_NAME} vertical gap={30}>
+          <Skeleton.Node
+            active
+            style={{
+              width: 200,
+              height: 42,
+              float: "right",
+            }}
+          />
+          <Skeleton active title={false} paragraph={{ rows: 4 }} />
+        </Flex>
       )}
     </div>
   );
@@ -884,7 +887,12 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       // 传入活跃 run 标记，避免流式期间的节点全部退化为 standalone
       { hasActiveRun: Boolean(state.currentChatActiveRun) },
     );
-  }, [timelineEntries, state.events, state.taskItemsById, state.currentChatActiveRun]);
+  }, [
+    timelineEntries,
+    state.events,
+    state.taskItemsById,
+    state.currentChatActiveRun,
+  ]);
 
   const runStartedAt = useMemo(() => {
     if (!isMainChatRunning && !state.streaming) return null;
@@ -969,9 +977,9 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   const transition = state.chatTransition;
   const transitionPending = Boolean(
     transition &&
-      (transition.phase === "loading" ||
-        transition.phase === "applying" ||
-        transition.phase === "restoring"),
+    (transition.phase === "loading" ||
+      transition.phase === "applying" ||
+      transition.phase === "restoring"),
   );
   const normalizedExpectedChatId = String(expectedChatId || "").trim();
   const routeTargetMismatch = Boolean(
@@ -980,6 +988,19 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   const transitionError = transition?.phase === "error" ? transition.error : "";
   const transitionOverlayVisible =
     routeTargetMismatch || transitionPending || Boolean(transitionError);
+  // 频繁切换 chat 时过渡态往往 < 300ms，直接渲染遮罩会反复闪现；
+  // 延迟出现（出现需稳定 300ms，消失立即生效），过滤掉快速切换的闪烁。
+  const [transitionOverlayShown, setTransitionOverlayShown] = useState(false);
+  useEffect(() => {
+    if (!transitionOverlayVisible) {
+      setTransitionOverlayShown(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setTransitionOverlayShown(true);
+    }, CONVERSATION_TRANSITION_OVERLAY_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [transitionOverlayVisible]);
   const restorationReady =
     !transitionOverlayVisible &&
     (!transition ||
@@ -987,8 +1008,8 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       transition.targetChatId !== state.chatId);
   const matchingSnapshot = Boolean(
     currentBookmark?.snapshot &&
-      currentBookmark.dataSignature === dataSignature &&
-      currentBookmark.layoutSignature === layoutSignature,
+    currentBookmark.dataSignature === dataSignature &&
+    currentBookmark.layoutSignature === layoutSignature,
   )
     ? currentBookmark?.snapshot
     : undefined;
@@ -1311,7 +1332,13 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     } else {
       commit();
     }
-  }, [dataSignature, layoutSignature, state.chatId, surfaceMode, virtualItemKeys]);
+  }, [
+    dataSignature,
+    layoutSignature,
+    state.chatId,
+    surfaceMode,
+    virtualItemKeys,
+  ]);
 
   const captureCurrentBookmarkRef = useRef(captureCurrentBookmark);
   captureCurrentBookmarkRef.current = captureCurrentBookmark;
@@ -1478,8 +1505,8 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       const latest = appContext?.stateRef.current.chatTransition;
       return Boolean(
         latest &&
-          latest.seq === transition.seq &&
-          latest.targetChatId === transition.targetChatId,
+        latest.seq === transition.seq &&
+        latest.targetChatId === transition.targetChatId,
       );
     };
     if (!isStillCurrent()) {
@@ -2077,7 +2104,7 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
           }}
         />
       )}
-      {transitionOverlayVisible ? (
+      {transitionOverlayShown ? (
         <ConversationTransitionOverlay
           error={transitionError}
           retryLabel={t("surface.retry")}
