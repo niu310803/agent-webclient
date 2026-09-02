@@ -415,6 +415,11 @@ export function useConversationActions() {
       );
       localLoadSeqRef.current = seq;
       const loadingCurrentChat = Boolean(currentChatId && currentChatId === chatId);
+      const existingActiveRun = stateRef.current.currentChatActiveRun;
+      const transitionStartsInBackground = Boolean(
+        existingActiveRun?.chatId === chatId &&
+        String(existingActiveRun.runId || '').trim(),
+      );
       dispatch({
         type: 'BEGIN_CHAT_TRANSITION',
         transition: {
@@ -427,10 +432,19 @@ export function useConversationActions() {
             : currentChatId
               ? 'history-switch'
               : 'initial-load',
+          displayMode: transitionStartsInBackground
+            ? 'background'
+            : 'blocking',
           focusComposerOnReady: focusComposerOnComplete,
           error: '',
         },
       });
+      if (transitionStartsInBackground) {
+        dispatch({
+          type: 'APPEND_DEBUG',
+          line: `[chat transition] active-run background chatId=${chatId} runId=${String(existingActiveRun?.runId || '').trim()} transitionSeq=${seq} phase=loading displayMode=background`,
+        });
+      }
       const isLoadCurrent = () => {
         const latestState = stateRef.current;
         if (latestState.chatLoadSeq >= seq) {
@@ -571,7 +585,22 @@ export function useConversationActions() {
               downvotedRunKeys,
             },
           });
+          dispatch({
+            type: 'SET_CHAT_TRANSITION_DISPLAY_MODE',
+            seq,
+            targetChatId: chatId,
+            displayMode:
+              transitionStartsInBackground || currentChatActiveRun
+                ? 'background'
+                : 'blocking',
+          });
         });
+        if (currentChatActiveRun) {
+          dispatch({
+            type: 'APPEND_DEBUG',
+            line: `[chat transition] active-run background chatId=${chatId} runId=${activeRunId} transitionSeq=${seq} phase=applying displayMode=background`,
+          });
+        }
         if (awaitingReconciliation.diagnostic) {
           dispatch({
             type: 'APPEND_DEBUG',
@@ -584,6 +613,12 @@ export function useConversationActions() {
             const refreshTimer = globalThis.setTimeout(() => {
               const latestState = stateRef.current;
               if (String(latestState.chatId || '').trim() !== chatId) {
+                return;
+              }
+              if (
+                latestState.currentChatActiveRun?.chatId !== chatId ||
+                String(latestState.currentChatActiveRun.runId || '').trim() !== activeRunId
+              ) {
                 return;
               }
               if (hasContentTimelineTextInState(latestState)) {

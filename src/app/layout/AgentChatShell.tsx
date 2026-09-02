@@ -7,7 +7,11 @@ import React, {
 } from "react";
 import { message } from "antd";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useAppDispatch, useAppState } from "@/app/state/AppContext";
+import {
+  useAppDispatch,
+  useAppState,
+  useOptionalAppContext,
+} from "@/app/state/AppContext";
 import type { Agent } from "@/app/state/types";
 import { TopNav } from "@/app/layout/TopNav";
 import { BottomDock } from "@/app/layout/BottomDock";
@@ -26,6 +30,10 @@ import {
   canPrepareDesktopNewChat,
   prepareDesktopNewChat,
 } from "@/shared/data/desktop/desktopNewChat";
+import {
+  isMainChatRuntimeObservedByLiveQuery,
+  resolveMainChatRuntime,
+} from "@/features/runs/lib/runRuntimeState";
 
 export function parseNewChatTimestamp(rawValue: unknown): string {
   const timestamp = String(rawValue || "").trim();
@@ -306,6 +314,7 @@ const AgentRouteErrorPage: React.FC<{
 export const AgentChatShell: React.FC = () => {
   const state = useAppState();
   const dispatch = useAppDispatch();
+  const appContext = useOptionalAppContext();
   const { t } = useI18n();
   const navigate = useNavigate();
   const params = useParams<{ agentKey?: string }>();
@@ -694,6 +703,19 @@ export const AgentChatShell: React.FC = () => {
       ) {
         return;
       }
+      const mainRuntime = appContext
+        ? resolveMainChatRuntime(
+            appContext.stateRef,
+            appContext.activeQuerySessionRequestIdRef,
+            appContext.querySessionsRef,
+          )
+        : null;
+      if (
+        mainRuntime &&
+        isMainChatRuntimeObservedByLiveQuery(mainRuntime, chatId)
+      ) {
+        return;
+      }
       window.dispatchEvent(
         new CustomEvent("agent:load-chat", {
           detail: {
@@ -784,6 +806,7 @@ export const AgentChatShell: React.FC = () => {
     sendPreparedResend();
   }, [
     agentKey,
+    appContext,
     chatId,
     composerPrefillPayload,
     dispatch,

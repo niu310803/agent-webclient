@@ -129,12 +129,15 @@ export type ChatTransitionKind =
 	| "history-switch"
 	| "same-chat-reload";
 
+export type ChatTransitionDisplayMode = "blocking" | "background";
+
 export interface ChatTransition {
 	seq: number;
 	sourceChatId: string;
 	targetChatId: string;
 	phase: ChatTransitionPhase;
 	kind: ChatTransitionKind;
+	displayMode: ChatTransitionDisplayMode;
 	focusComposerOnReady: boolean;
 	error: string;
 }

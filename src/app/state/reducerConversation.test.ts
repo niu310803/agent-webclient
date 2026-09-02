@@ -334,6 +334,7 @@ describe("reduceConversationState – chat transition", () => {
 				targetChatId: "chat-b",
 				phase: "loading",
 				kind: "history-switch",
+				displayMode: "blocking",
 				focusComposerOnReady: true,
 				error: "",
 			},
@@ -341,21 +342,46 @@ describe("reduceConversationState – chat transition", () => {
 		expect(started.chatLoadSeq).toBe(1);
 		expect(started.chatTransition?.phase).toBe("loading");
 
-		const stale = appReducer(started, {
+		const background = appReducer(started, {
+			type: "SET_CHAT_TRANSITION_DISPLAY_MODE",
+			seq: 1,
+			targetChatId: "chat-b",
+			displayMode: "background",
+		});
+		expect(background.chatTransition?.displayMode).toBe("background");
+
+		const stickyBackground = appReducer(background, {
+			type: "SET_CHAT_TRANSITION_DISPLAY_MODE",
+			seq: 1,
+			targetChatId: "chat-b",
+			displayMode: "blocking",
+		});
+		expect(stickyBackground).toBe(background);
+
+		const staleDisplayMode = appReducer(background, {
+			type: "SET_CHAT_TRANSITION_DISPLAY_MODE",
+			seq: 1,
+			targetChatId: "chat-c",
+			displayMode: "blocking",
+		});
+		expect(staleDisplayMode).toBe(background);
+
+		const stale = appReducer(background, {
 			type: "ADVANCE_CHAT_TRANSITION",
 			seq: 1,
 			targetChatId: "chat-c",
 			phase: "applying",
 		});
-		expect(stale).toBe(started);
+		expect(stale).toBe(background);
 
-		const applying = appReducer(started, {
+		const applying = appReducer(background, {
 			type: "ADVANCE_CHAT_TRANSITION",
 			seq: 1,
 			targetChatId: "chat-b",
 			phase: "applying",
 		});
 		expect(applying.chatTransition?.phase).toBe("applying");
+		expect(applying.chatTransition?.displayMode).toBe("background");
 	});
 
 	it("records errors and creates monotonic explicit scroll requests", () => {
@@ -367,6 +393,7 @@ describe("reduceConversationState – chat transition", () => {
 				targetChatId: "chat-b",
 				phase: "loading",
 				kind: "initial-load",
+				displayMode: "blocking",
 				focusComposerOnReady: false,
 				error: "",
 			},

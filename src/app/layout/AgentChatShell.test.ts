@@ -27,6 +27,7 @@ jest.mock("react-router-dom", () => ({
 jest.mock("@/app/state/AppContext", () => ({
   useAppState: jest.fn(),
   useAppDispatch: jest.fn(),
+  useOptionalAppContext: jest.fn(),
 }));
 
 jest.mock("@/app/layout/hooks/useAppRuntimes", () => ({
@@ -162,11 +163,12 @@ const { useNavigate, useParams, useSearchParams } = jest.requireMock("react-rout
   useSearchParams: jest.Mock;
 };
 
-const { useAppState, useAppDispatch } = jest.requireMock(
+const { useAppState, useAppDispatch, useOptionalAppContext } = jest.requireMock(
   "@/app/state/AppContext",
 ) as {
   useAppState: jest.Mock;
   useAppDispatch: jest.Mock;
+  useOptionalAppContext: jest.Mock;
 };
 
 const { useAppRuntimes } = jest.requireMock(
@@ -265,6 +267,7 @@ describe("AgentChatShell", () => {
     navigateMock.mockClear();
     useAppState.mockReturnValue(createInitialState());
     useAppDispatch.mockReturnValue(jest.fn());
+    useOptionalAppContext.mockReturnValue(null);
     useAppRuntimes.mockClear();
     startNewConversation.mockClear();
     useAppRuntimes.mockReturnValue({
@@ -547,6 +550,44 @@ describe("AgentChatShell", () => {
       }),
     );
     expect(loadAgents).toHaveBeenCalledTimes(1);
+
+    useEffectSpy.mockRestore();
+  });
+
+  it("switches the worker and starts blank state when Desktop routes new chat to another agent", () => {
+    const dispatch = jest.fn();
+    const dispatchEvent = globalWithDom.window?.dispatchEvent as jest.Mock;
+    const useEffectSpy = jest
+      .spyOn(React, "useEffect")
+      .mockImplementation((effect: React.EffectCallback) => {
+        effect();
+      });
+    useParams.mockReturnValue({ agentKey: "next-agent" });
+    useSearchParams.mockReturnValue([
+      new URLSearchParams("newChat=1783680000001"),
+    ]);
+    useAppState.mockReturnValue({
+      ...createInitialState(),
+      agents: [
+        { key: "demo-agent", name: "Demo Agent", role: "Worker", mode: "CODER" },
+        { key: "next-agent", name: "Next Agent", role: "Worker", mode: "CODER" },
+      ],
+      workerSelectionKey: "agent:demo-agent",
+    });
+    useAppDispatch.mockReturnValue(dispatch);
+
+    renderToStaticMarkup(React.createElement(AgentChatShell));
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "SET_WORKER_SELECTION_KEY",
+      workerKey: "agent:next-agent",
+    });
+    expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "agent:start-new-conversation",
+        detail: expect.objectContaining({ agentKey: "next-agent" }),
+      }),
+    );
 
     useEffectSpy.mockRestore();
   });
@@ -895,6 +936,46 @@ describe("AgentChatShell", () => {
     expect(html).toContain('data-show-empty-state="false"');
     expect(html).toContain('data-surface-mode="agent"');
     expect(html).toContain('data-expected-chat-id="chat-123"');
+
+    useEffectSpy.mockRestore();
+  });
+
+  it("does not load history when the route target belongs to the original live query", () => {
+    const dispatchEvent = globalWithDom.window?.dispatchEvent as jest.Mock;
+    const useEffectSpy = jest
+      .spyOn(React, "useEffect")
+      .mockImplementation((effect: React.EffectCallback) => {
+        effect();
+      });
+    const state = {
+      ...createInitialState(),
+      agents: [
+        { key: "demo-agent", name: "Demo Agent", role: "Worker", mode: "CODER" },
+      ],
+      workerSelectionKey: "agent:demo-agent",
+    };
+    const liveSession = {
+      requestId: "req-live",
+      chatId: "chat-123",
+      streaming: true,
+      observationSource: "query",
+    };
+    useSearchParams.mockReturnValue([new URLSearchParams("chatId=chat-123")]);
+    useAppState.mockReturnValue(state);
+    useOptionalAppContext.mockReturnValue({
+      stateRef: { current: state },
+      activeQuerySessionRequestIdRef: { current: "req-live" },
+      querySessionsRef: { current: new Map([["req-live", liveSession]]) },
+    });
+
+    renderToStaticMarkup(React.createElement(AgentChatShell));
+
+    expect(dispatchEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "agent:load-chat",
+        detail: expect.objectContaining({ chatId: "chat-123" }),
+      }),
+    );
 
     useEffectSpy.mockRestore();
   });

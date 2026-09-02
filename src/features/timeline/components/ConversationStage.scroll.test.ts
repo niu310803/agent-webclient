@@ -17,6 +17,7 @@ let mockState: AppState;
 let mockStateRef: { current: AppState };
 let mockAppContext: any;
 let mockVirtuosoProps: any;
+let mockMainChatRuntime: any;
 const mockDispatch = jest.fn();
 const mockScrollToIndex = jest.fn();
 const mockScrollBy = jest.fn();
@@ -32,7 +33,16 @@ jest.mock("@/features/workers/lib/currentWorker", () => ({
 }));
 
 jest.mock("@/features/runs/lib/runRuntimeState", () => ({
-  resolveMainChatRuntime: () => ({ running: false }),
+  resolveMainChatRuntime: () => mockMainChatRuntime,
+  isMainChatRuntimeObservedByLiveQuery: (runtime: any, targetChatId: string) => {
+    const session = runtime?.session;
+    return Boolean(
+      (!runtime?.chatId || runtime.chatId === targetChatId) &&
+        session?.streaming &&
+        session.observationSource !== "attach" &&
+        session.chatId === targetChatId,
+    );
+  },
 }));
 
 jest.mock("@/features/timeline/components/TimelineRow", () => ({
@@ -151,6 +161,7 @@ function createTransition(
     targetChatId: "chat-target",
     phase,
     kind: "history-switch",
+    displayMode: "blocking",
     focusComposerOnReady: false,
     error: "",
     ...overrides,
@@ -188,6 +199,11 @@ describe("ConversationStage scroll restoration", () => {
     mockScrollToIndex.mockReset();
     mockScrollBy.mockReset();
     mockVirtuosoProps = null;
+    mockMainChatRuntime = {
+      chatId: "chat-target",
+      session: null,
+      running: false,
+    };
     mockState = createChatState();
     mockStateRef = { current: mockState };
     mockAppContext = {
@@ -236,6 +252,123 @@ describe("ConversationStage scroll restoration", () => {
     expect(container.querySelector(".conversation-transition-overlay")).not.toBeNull();
     expect(container.querySelector('[data-node-id="query-1"]')).not.toBeNull();
     expect(mockVirtuosoProps.followOutput(true)).toBe(false);
+  });
+
+  it("keeps the live timeline visible while its canonical route binding catches up", () => {
+    mockState = {
+      ...createChatState(createTransition("loading", {
+        sourceChatId: "chat-source",
+        targetChatId: "chat-next",
+      })),
+      chatId: "chat-source",
+    };
+    mockStateRef.current = mockState;
+    mockMainChatRuntime = {
+      chatId: "chat-next",
+      session: {
+        requestId: "req-live",
+        chatId: "chat-next",
+        streaming: true,
+        observationSource: "query",
+      },
+      running: true,
+    };
+
+    renderStage("chat-next");
+
+    expect(container.querySelector(".conversation-transition-overlay")).toBeNull();
+    expect(container.querySelector('[data-node-id="query-1"]')).not.toBeNull();
+    expect(mockVirtuosoProps.followOutput(true)).toBe("smooth");
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "CLEAR_CHAT_TRANSITION",
+    });
+  });
+
+  it("keeps the history overlay until an attached active run is hydrated", () => {
+    mockState = {
+      ...createChatState(createTransition("loading", {
+        sourceChatId: "chat-source",
+        targetChatId: "chat-next",
+      })),
+      chatId: "chat-source",
+    };
+    mockStateRef.current = mockState;
+    mockMainChatRuntime = {
+      chatId: "chat-next",
+      session: {
+        requestId: "req-attach",
+        chatId: "chat-next",
+        streaming: true,
+        observationSource: "attach",
+      },
+      running: true,
+    };
+
+    renderStage("chat-next");
+
+    expect(container.querySelector(".conversation-transition-overlay")).not.toBeNull();
+    expect(mockDispatch).not.toHaveBeenCalledWith({
+      type: "CLEAR_CHAT_TRANSITION",
+    });
+  });
+
+  it("shows the replayed timeline while an attached active run restores in the background", () => {
+    mockState = {
+      ...createChatState(createTransition("loading", {
+        sourceChatId: "chat-source",
+        targetChatId: "chat-next",
+        displayMode: "background",
+      })),
+      chatId: "chat-next",
+      currentChatActiveRun: {
+        chatId: "chat-next",
+        runId: "run-attach",
+      },
+    };
+    mockStateRef.current = mockState;
+    mockMainChatRuntime = {
+      chatId: "chat-next",
+      session: {
+        requestId: "req-attach",
+        chatId: "chat-next",
+        runId: "run-attach",
+        streaming: true,
+        observationSource: "attach",
+      },
+      running: true,
+    };
+
+    renderStage("chat-next");
+
+    expect(container.querySelector(".conversation-transition-overlay")).toBeNull();
+    expect(container.querySelector('[data-node-id="query-1"]')).not.toBeNull();
+    expect(mockVirtuosoProps.followOutput(true)).toBe("smooth");
+  });
+
+  it("does not flash the skeleton when the active run completes during restoration", () => {
+    mockState = createChatState(createTransition("restoring", {
+      displayMode: "background",
+    }));
+    mockState.currentChatActiveRun = null;
+    mockStateRef.current = mockState;
+
+    renderStage();
+
+    expect(container.querySelector(".conversation-transition-overlay")).toBeNull();
+    expect(container.querySelector('[data-node-id="query-1"]')).not.toBeNull();
+  });
+
+  it("still shows a transition error after an active run was moved to the background", () => {
+    mockState = createChatState(createTransition("error", {
+      displayMode: "background",
+      error: "history failed",
+    }));
+    mockStateRef.current = mockState;
+
+    renderStage();
+
+    expect(container.querySelector(".conversation-transition-overlay")).not.toBeNull();
+    expect(container.textContent).toContain("history failed");
   });
 
   it("restores a middle anchor with auto scrolling and only then marks ready", () => {

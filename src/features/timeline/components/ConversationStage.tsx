@@ -56,7 +56,10 @@ import {
   type WorkerRow,
 } from "@/app/state/types";
 import { LogoLoading } from "@/shared/components/logo-loading";
-import { resolveMainChatRuntime } from "@/features/runs/lib/runRuntimeState";
+import {
+  isMainChatRuntimeObservedByLiveQuery,
+  resolveMainChatRuntime,
+} from "@/features/runs/lib/runRuntimeState";
 import { DotLoading } from "@/shared/components/dot-loading";
 import { Virtuoso } from "react-virtuoso";
 import type {
@@ -847,13 +850,14 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     state.conversationScrollRequest?.id || 0,
   );
   const currentWorker = resolveCurrentWorkerSummary(state);
-  const isMainChatRunning = appContext
+  const mainChatRuntime = appContext
     ? resolveMainChatRuntime(
         appContext.stateRef,
         appContext.activeQuerySessionRequestIdRef,
         appContext.querySessionsRef,
-      ).running
-    : false;
+      )
+    : null;
+  const isMainChatRunning = Boolean(mainChatRuntime?.running);
 
   const timelineAgentOptions = useMemo(
     () =>
@@ -977,14 +981,60 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   const routeTargetMismatch = Boolean(
     normalizedExpectedChatId && normalizedExpectedChatId !== state.chatId,
   );
+  const overlayTargetChatId = String(
+    transition?.targetChatId || normalizedExpectedChatId,
+  ).trim();
+  const liveQueryOwnsOverlayTarget = Boolean(
+    mainChatRuntime &&
+      overlayTargetChatId &&
+      isMainChatRuntimeObservedByLiveQuery(
+        mainChatRuntime,
+        overlayTargetChatId,
+      ),
+  );
+  const liveQueryTakesDisplayPriority = Boolean(
+    liveQueryOwnsOverlayTarget && transition?.kind !== "same-chat-reload",
+  );
+  const backgroundTransitionOwnsDisplayedChat = Boolean(
+    transition?.displayMode === "background" &&
+      transition.targetChatId &&
+      transition.targetChatId === state.chatId &&
+      (!normalizedExpectedChatId ||
+        transition.targetChatId === normalizedExpectedChatId),
+  );
   const transitionError = transition?.phase === "error" ? transition.error : "";
   const transitionOverlayVisible =
-    routeTargetMismatch || transitionPending || Boolean(transitionError);
+    Boolean(transitionError) ||
+    (!liveQueryTakesDisplayPriority &&
+      !backgroundTransitionOwnsDisplayedChat &&
+      (routeTargetMismatch || transitionPending));
   const restorationReady =
-    !transitionOverlayVisible &&
-    (!transition ||
-      transition.phase === "ready" ||
-      transition.targetChatId !== state.chatId);
+    liveQueryTakesDisplayPriority ||
+    backgroundTransitionOwnsDisplayedChat ||
+    (!transitionOverlayVisible &&
+      (!transition ||
+        transition.phase === "ready" ||
+        transition.targetChatId !== state.chatId));
+  useEffect(() => {
+    if (
+      !liveQueryTakesDisplayPriority ||
+      !transition ||
+      transition.kind === "same-chat-reload" ||
+      transition.targetChatId !== overlayTargetChatId
+    ) {
+      return;
+    }
+    // A route-driven history transaction can race with canonical new-Chat
+    // promotion. Once the original query owns the target, cancel the stale
+    // transaction so it cannot keep Composer interactions blocked or apply a
+    // late history response over live deltas.
+    dispatch({ type: "CLEAR_CHAT_TRANSITION" });
+  }, [
+    dispatch,
+    liveQueryTakesDisplayPriority,
+    overlayTargetChatId,
+    transition,
+  ]);
   const matchingSnapshot = Boolean(
     currentBookmark?.snapshot &&
       currentBookmark.dataSignature === dataSignature &&

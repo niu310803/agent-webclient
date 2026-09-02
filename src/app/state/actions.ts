@@ -66,6 +66,12 @@ export type AppAction =
 	| { type: "SET_CHAT_ID"; chatId: string }
 	| { type: "BEGIN_CHAT_TRANSITION"; transition: ChatTransition }
 	| {
+			type: "SET_CHAT_TRANSITION_DISPLAY_MODE";
+			seq: number;
+			targetChatId: string;
+			displayMode: ChatTransition["displayMode"];
+	  }
+	| {
 			type: "ADVANCE_CHAT_TRANSITION";
 			seq: number;
 			targetChatId: string;

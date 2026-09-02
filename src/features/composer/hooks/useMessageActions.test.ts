@@ -396,6 +396,7 @@ describe("useMessageActions temporary pin", () => {
       targetChatId: "chat_new",
       phase: "loading",
       kind: "history-switch",
+      displayMode: "blocking",
       focusComposerOnReady: false,
       error: "",
     };

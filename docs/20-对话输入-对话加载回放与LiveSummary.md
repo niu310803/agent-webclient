@@ -22,7 +22,7 @@
 
 历史切换由 `AppState.chatTransition` 表示，阶段固定为 `loading → applying → restoring → ready`，失败进入 `error`。事务身份使用全局递增的 `chatLoadSeq`，所有请求结果、重试、原子应用和滚动恢复都必须同时匹配 `seq + targetChatId`；较早的 A→B 请求即使晚于 A→C 返回，也不能再修改可见状态。
 
-切换开始时，`useConversationActions` 先通过 AppContext 中的 viewport handle 同步保存来源 Chat 阅读位置，再创建事务。请求期间保留来源 timeline，不再用 `streaming=true` 模拟历史加载，也不提前清空事件；`ConversationStage` 根据路由目标和事务阶段覆盖骨架层，因此路由变化首帧不会闪现旧 Chat。响应成功后，Chat ID、reset 和 replay 投影在同一个 `flushSync` 批次内应用，随后由时间线完成位置恢复并推进 `ready`。失败时来源数据继续保留在错误层后方，重试创建新事务，不提交空目标会话。
+切换开始时，`useConversationActions` 先通过 AppContext 中的 viewport handle 同步保存来源 Chat 阅读位置，再创建事务。请求期间保留来源 timeline，不再用 `streaming=true` 模拟历史加载，也不提前清空事件；`ConversationStage` 只为阻塞型历史事务或不属于当前原生 live query 的路由目标覆盖骨架层，因此历史路由变化首帧不会闪现旧 Chat，而 new Chat 的 canonical URL promotion 始终保留实时 Timeline。判断只认可 `observationSource !== "attach"` 的原 query session；若 route-driven 历史事务已与该 promotion 竞态创建，时间线立即清除该事务，使其迟到响应失效且不继续锁定 Composer。历史响应一旦返回带非空 `runId` 的 `activeRun`，Chat ID、reset、replay 投影和 `currentChatActiveRun` 在同一个 `flushSync` 批次内应用，并将该事务提升为粘性的后台恢复模式：Timeline 与 Composer 立即可用，attach、增量事件接收和阅读位置恢复继续执行，运行恰好完成也不会重新闪回骨架层。没有 `activeRun` 的历史响应仍保持阻塞，直到位置恢复推进 `ready`。失败时来源数据继续保留在错误层后方，错误层始终可见，重试创建新事务，不提交空目标会话。
 
 `forceReload` 使用 `same-chat-reload` 并执行同样的保存与恢复。新建空白对话会先保存来源位置、取消当前事务，再 reset；新 Chat 获得 canonical `chatId` 的 session promotion 仍绕过历史加载事务。事务处于加载、应用、恢复或错误阶段时，Composer 及旧的 awaiting、plan、frontend tool 交互均不可提交；需要聚焦 Composer 的切换只在恢复完成后派发，并使用 `preventScroll`。
 

@@ -357,6 +357,7 @@ describe("ComposerArea", () => {
       targetChatId: "chat_new",
       phase: "loading",
       kind: "history-switch",
+      displayMode: "blocking",
       focusComposerOnReady: false,
       error: "",
     };

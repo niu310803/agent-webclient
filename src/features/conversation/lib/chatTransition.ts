@@ -14,10 +14,10 @@ export function isChatTransitionPending(
 export function isChatTransitionBlockingInteractions(
   transition: ChatTransition | null | undefined,
 ): boolean {
-  return Boolean(
-    transition &&
-      (isChatTransitionPending(transition) || transition.phase === "error"),
-  );
+  if (!transition) return false;
+  if (transition.phase === "error") return true;
+  return transition.displayMode !== "background" &&
+    isChatTransitionPending(transition);
 }
 
 export function isCurrentChatTransition(

@@ -308,6 +308,7 @@ describe('replayEvent tool migration', () => {
         targetChatId: 'chat_new',
         phase: 'loading',
         kind: 'history-switch',
+        displayMode: 'blocking',
       }),
     }));
     expect(dispatch).not.toHaveBeenCalledWith({ type: 'CLEAR_EVENTS' });
@@ -1551,6 +1552,83 @@ describe('replayEvent tool migration', () => {
         },
       }),
     });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SET_CHAT_TRANSITION_DISPLAY_MODE',
+      seq: 1,
+      targetChatId: 'chat-active',
+      displayMode: 'background',
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'APPEND_DEBUG',
+      line: '[chat transition] active-run background chatId=chat-active runId=run_active transitionSeq=1 phase=applying displayMode=background',
+    });
+  });
+
+  it('keeps a current active-run refresh in the background when the API reports that the run completed', async () => {
+    const state = createInitialState();
+    state.chatId = 'chat-active';
+    state.currentChatActiveRun = {
+      chatId: 'chat-active',
+      runId: 'run-active',
+    };
+    const { actions, dispatch } = renderChatActions(state);
+    getChat.mockResolvedValue({
+      data: {
+        chatId: 'chat-active',
+        events: [],
+        activeRun: null,
+        runs: [],
+      },
+    });
+
+    await actions?.loadChat('chat-active', { forceReload: true });
+
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'BEGIN_CHAT_TRANSITION',
+      transition: expect.objectContaining({
+        targetChatId: 'chat-active',
+        displayMode: 'background',
+      }),
+    }));
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SET_CHAT_TRANSITION_DISPLAY_MODE',
+      seq: 1,
+      targetChatId: 'chat-active',
+      displayMode: 'background',
+    });
+  });
+
+  it('does not schedule another history refresh after the attached active run completes', async () => {
+    jest.useFakeTimers();
+    try {
+      const state = createInitialState();
+      const { actions } = renderChatActions(state);
+      getChat.mockResolvedValue({
+        data: {
+          chatId: 'chat-active',
+          events: [],
+          activeRun: {
+            runId: 'run-active',
+            agentKey: 'askUser.demo',
+            lastSeq: 7,
+          },
+          runs: [],
+        },
+      });
+
+      await actions?.loadChat('chat-active');
+      state.chatId = 'chat-active';
+      state.currentChatActiveRun = null;
+      globalWithBrowserApis.window!.dispatchEvent.mockClear();
+
+      jest.advanceTimersByTime(20_000);
+
+      expect(globalWithBrowserApis.window!.dispatchEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'agent:load-chat' }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('restores planningMode=true when activeRun.planningMode is true and no explicit preference', async () => {

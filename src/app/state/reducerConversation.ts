@@ -25,6 +25,26 @@ export function reduceConversationState(
 				chatTransition: action.transition,
 			};
 		}
+		case "SET_CHAT_TRANSITION_DISPLAY_MODE": {
+			const transition = state.chatTransition;
+			if (
+				!transition ||
+				transition.seq !== action.seq ||
+				transition.targetChatId !== action.targetChatId ||
+				(transition.displayMode === "background" &&
+					action.displayMode === "blocking") ||
+				transition.displayMode === action.displayMode
+			) {
+				return state;
+			}
+			return {
+				...state,
+				chatTransition: {
+					...transition,
+					displayMode: action.displayMode,
+				},
+			};
+		}
 		case "ADVANCE_CHAT_TRANSITION": {
 			const transition = state.chatTransition;
 			if (
