@@ -971,8 +971,8 @@ describe('data client query payloads', () => {
 			headers: new Headers({
 				'Content-Type': 'text/markdown; charset=utf-8',
 				'Content-Length': '128',
-				'X-ZenMind-Document-Kind': 'document-markdown',
-				'X-ZenMind-Resource-Revision': '128:42',
+				'X-Document-Kind': 'document-markdown',
+				'X-Document-Revision': '128:42',
 			}),
 		});
 
@@ -990,7 +990,7 @@ describe('data client query payloads', () => {
 		);
 	});
 
-	it('keeps documentKind absent for an older Platform response', async () => {
+	it('keeps documentKind absent when the authoritative header is missing', async () => {
 		fetchMock.mockResolvedValueOnce({
 			ok: true,
 			status: 200,

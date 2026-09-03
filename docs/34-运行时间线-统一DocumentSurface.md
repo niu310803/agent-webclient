@@ -14,7 +14,7 @@ Standalone 全部由 WebClient 承载。Desktop 模式先用 canonical `openDocu
 
 WebClient 不解析 revision，也不把临时扩展名分类当成最终事实。读取链路返回的 MIME、内容类型与 revision 会覆盖 provisional 分类；保存统一进入 Platform `document.commit`，`revision_conflict` 必须向用户显示重载或另存选择。
 
-Resource metadata 缺少权威 kind header 时视为旧 Platform，不把“缺字段”解释成 binary，继续保留按语义文件名得到的 provisional 分类。权威 kind 为 binary 且语义文件名是已知文本扩展名时不进入编辑器，显示“文本编码不受支持”及下载入口；metadata 同时消费 `Content-Length` 展示准确大小。
+Resource metadata 缺少权威 `X-Document-Kind` 时不把“缺字段”解释成 binary，继续保留按语义文件名得到的 provisional 分类。权威 kind 为 binary 且语义文件名是已知文本扩展名时不进入编辑器，显示“文本编码不受支持”及下载入口；metadata 同时消费 `X-Document-Revision` 作为不透明源版本，并用 `Content-Length` 展示准确大小。
 
 ## 内容能力
 

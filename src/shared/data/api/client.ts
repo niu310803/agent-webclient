@@ -2050,8 +2050,11 @@ export interface ResourceDocumentTextResponse {
 
 export type ResourceDocumentMetadataResponse = Omit<ResourceDocumentTextResponse, "content">;
 
+const RESOURCE_DOCUMENT_KIND_HEADER = "X-Document-Kind";
+const RESOURCE_DOCUMENT_REVISION_HEADER = "X-Document-Revision";
+
 function resourceDocumentMetadata(response: Response): ResourceDocumentMetadataResponse {
-  const rawKind = String(response.headers.get("X-ZenMind-Document-Kind") || "").trim();
+  const rawKind = String(response.headers.get(RESOURCE_DOCUMENT_KIND_HEADER) || "").trim();
   const rawSize = String(response.headers.get("Content-Length") || "").trim();
   const sizeBytes = rawSize === "" ? Number.NaN : Number(rawSize);
   const allowedKinds = new Set([
@@ -2060,7 +2063,7 @@ function resourceDocumentMetadata(response: Response): ResourceDocumentMetadataR
     "document-video", "document-archive", "document-binary",
   ]);
   return {
-    revision: String(response.headers.get("X-ZenMind-Resource-Revision") || "").trim(),
+    revision: String(response.headers.get(RESOURCE_DOCUMENT_REVISION_HEADER) || "").trim(),
     mimeType: String(response.headers.get("Content-Type") || "").split(";", 1)[0].trim(),
     ...(Number.isFinite(sizeBytes) && sizeBytes >= 0 ? { sizeBytes } : {}),
     ...(allowedKinds.has(rawKind)
