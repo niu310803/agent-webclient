@@ -2082,11 +2082,11 @@ describe('replayEvent tool migration', () => {
     );
   });
 
-  it('clears the shared blank-chat draft when starting a new conversation', () => {
+  it('restores the shared blank-chat draft when starting a new conversation', () => {
     const state = createInitialState();
     state.chatId = 'chat_old';
-    state.composerDraft = 'already sent';
-    state.composerDraftByChatId = { '': 'already sent' };
+    state.composerDraft = 'history draft';
+    state.composerDraftByChatId = { '': 'shared new-chat draft' };
     const dispatch = jest.fn();
     useAppContext.mockReturnValue({
       state,
@@ -2113,7 +2113,46 @@ describe('replayEvent tool migration', () => {
       ([action]) => action.type === 'SET_COMPOSER_DRAFT' && action.draft === '',
     );
     expect(chatResetCall).toBeGreaterThanOrEqual(0);
-    expect(draftResetCall).toBeGreaterThan(chatResetCall);
+    expect(draftResetCall).toBe(-1);
+  });
+
+  it('keeps the shared blank-chat draft when switching the selected agent', () => {
+    const state = createInitialState();
+    state.chatId = 'chat_old';
+    state.composerDraft = 'history draft';
+    state.composerDraftByChatId = { '': 'shared new-chat draft' };
+    const dispatch = jest.fn();
+    useAppContext.mockReturnValue({
+      state,
+      dispatch,
+      stateRef: { current: state },
+      querySessionsRef: { current: new Map() },
+      chatQuerySessionIndexRef: { current: new Map() },
+      activeQuerySessionRequestIdRef: { current: '' },
+    });
+
+    let actions: ReturnType<typeof useTestConversationActions> | null = null;
+    const Harness = () => {
+      actions = useTestConversationActions();
+      return null;
+    };
+    renderToStaticMarkup(React.createElement(Harness));
+
+    actions?.startNewConversation({
+      agentKey: 'agent_b',
+      preserveWorkerContext: true,
+      focusComposerOnComplete: true,
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SET_WORKER_SELECTION_KEY',
+      workerKey: 'agent:agent_b',
+    });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_CHAT_ID', chatId: '' });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: 'SET_COMPOSER_DRAFT',
+      draft: '',
+    });
   });
 
   it('stores viewportKey from new MCP payload and keeps toolName for display', () => {

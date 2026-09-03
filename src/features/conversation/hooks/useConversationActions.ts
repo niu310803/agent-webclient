@@ -329,7 +329,6 @@ export function useConversationActions() {
     window.dispatchEvent(new CustomEvent('agent:clear-composer-attachments'));
     window.dispatchEvent(new CustomEvent('agent:voice-reset'));
     dispatch({ type: 'SET_CHAT_ID', chatId: '' });
-    dispatch({ type: 'SET_COMPOSER_DRAFT', draft: '' });
     dispatch({ type: 'SET_RUN_ID', runId: '' });
     dispatch({ type: 'SET_REQUEST_ID', requestId: '' });
     dispatch({ type: 'SET_STREAMING', streaming: false });
