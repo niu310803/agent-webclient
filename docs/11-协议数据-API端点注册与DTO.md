@@ -12,6 +12,8 @@
 ## 核心流程
 业务模块从 `src/shared/data` 导入具体函数，不直接拼接 URL。新增接口时先在 `endpoints.ts` 注册端点，再在 `client.ts` 或 `routedClient.ts` 暴露语义化函数，最后由 feature hook 或页面调用。
 
+`ChatDetailResponse` 继承完整 `ChatSummaryResponse`：`/api/chat` 除 replay 数据外必须提供 `agentKey`/`teamId`、`lastRunId`、`lastRunContent` 与 `read { isRead, readAt?, readRunId? }`。`markChatRead` 是 WebClient Main Chat 的单 Chat read 请求函数；Desktop 模式仍通过通用 Frame Port `/api/read` 转发，Desktop 宿主不暴露或调用单 Chat read 业务 IPC。Agent 级批量已读属于宿主的显式用户命令，不由 WebClient 的自动 read hook 代发。
+
 Agent 顺序有两条 HTTP-only 数据边界：普通客户端通过 `GET/PUT /api/agents/order` 读取和提交全部有效 runtime Agent 的 catalog 顺序；Agent 管理台继续使用 `/api/admin/agents/order` 处理包含 invalid Agent 的完整 admin 顺序。两者复用 `AgentOrderResponse { version, order, updatedAt? }`，其中未生成顺序文件时 `updatedAt` 可以省略；前端不把 public endpoint 注册为 WebSocket route，也不把管理台切到 public mutation。
 
 静态 HTML 导出并行请求 `GET /api/chat/export?chatId=...&format=snapshot` 与同源 `/export/conversation.template.html`。Snapshot 保持 Blob，service 层只解析小体积模板并用 Blob parts 组装完整文档；Platform 不提供 HTML 格式。`src/shared/data/conversationSharePath.ts` 只负责将事件中的合法 `shareId` 构造成 `/share/{id}` 路径，不发起匿名请求，也不读取运行时配置。

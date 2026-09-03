@@ -2469,7 +2469,6 @@ describe("connectWsTransport continued", () => {
 					readAt: EPOCH_MS + 111,
 					readRunId: "run_1",
 				},
-				updatedAt: EPOCH_MS + 111,
 			}),
 		});
 		expect(dispatch).toHaveBeenCalledWith({

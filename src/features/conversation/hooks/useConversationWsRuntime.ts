@@ -155,7 +155,9 @@ function toChatPatchFromPushEvent(
 	const raw = event as Record<string, unknown>;
 	const chatPatch: Partial<Chat> & Pick<Chat, "chatId"> = {
 		chatId,
-		updatedAt: resolveChatSummaryUpdatedAt(event),
+		...(event.type === "chat.read"
+			? {}
+			: { updatedAt: resolveChatSummaryUpdatedAt(event) }),
 	};
 	const hasPendingAwaiting = resolveChatSummaryPendingAwaiting(event);
 	if (hasPendingAwaiting !== undefined) {

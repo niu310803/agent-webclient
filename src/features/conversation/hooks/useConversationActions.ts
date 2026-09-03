@@ -28,6 +28,8 @@ import {
 import { buildChatReplayProjection } from '@/features/conversation/lib/chatReplayProjection';
 import { dispatchDetachRunEvent, type DetachRunReason } from '@/features/runs/lib/runControlEvents';
 import { isCurrentChatTransition } from '@/features/conversation/lib/chatTransition';
+import { normalizeChatReadState } from '@/features/chats/lib/chatReadState';
+import { readEpochMillis } from '@/shared/utils/platformTime';
 
 /**
  * Replay state — mutable structure used during synchronous event replay.
@@ -162,6 +164,35 @@ function normalizeCurrentChatActiveRun(
     ...(owner?.kind === 'orchestrated-team' ? { teamId: owner.teamId } : {}),
     ...(owner ? { owner } : {}),
   };
+}
+
+export function buildLoadedChatSummary(
+	chatId: string,
+	value: unknown,
+): Partial<Chat> & Pick<Chat, 'chatId'> {
+	const data = isObjectRecord(value) ? value : {};
+	const normalizedChatId = String(data.chatId || chatId || '').trim();
+	const teamId = String(data.teamId || '').trim();
+	const agentKey = String(data.agentKey || data.firstAgentKey || '').trim();
+	const owner = toRunOwner({ teamId, agentKey });
+	const createdAt = readEpochMillis(data.createdAt);
+	const updatedAt = readEpochMillis(data.updatedAt);
+	const read = normalizeChatReadState(data.read);
+	return {
+		chatId: normalizedChatId || String(chatId || '').trim(),
+		chatName: String(data.chatName || '').trim() || undefined,
+		...(owner?.kind === 'agent'
+			? { agentKey: owner.agentKey, firstAgentKey: owner.agentKey }
+			: {}),
+		...(owner?.kind === 'orchestrated-team' ? { teamId: owner.teamId } : {}),
+		...(owner ? { owner } : {}),
+		source: String(data.source || '').trim() || undefined,
+		...(createdAt !== undefined ? { createdAt } : {}),
+		...(updatedAt !== undefined ? { updatedAt } : {}),
+		lastRunId: String(data.lastRunId || '').trim() || undefined,
+		lastRunContent: String(data.lastRunContent || '').trim() || undefined,
+		...(read ? { read } : {}),
+	};
 }
 
 const LOAD_CHAT_RETRY_DELAYS_MS = [180, 420, 800] as const;
@@ -492,6 +523,7 @@ export function useConversationActions() {
         if (!isLoadCurrent()) return;
 
         const chatData = response.data as Record<string, unknown>;
+		const loadedChatSummary = buildLoadedChatSummary(chatId, chatData);
         const usageSnapshot = buildLoadedChatUsageSnapshot(chatId, chatData);
         const replayProjection = buildChatReplayProjection(chatId, chatData);
         const rs = replayProjection.state;
@@ -552,6 +584,7 @@ export function useConversationActions() {
         });
         if (!isLoadCurrent()) return;
         flushSync(() => {
+		  dispatch({ type: 'UPSERT_CHAT', chat: loadedChatSummary });
           applyLoadedChatState(chatId);
 
           /* Dispatch the complete replay result as a single batch update */

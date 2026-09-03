@@ -5,6 +5,7 @@ import type { Agent, AgentEvent, Chat, Team, WorkerRow } from '@/app/state/types
 import { buildTimelineDisplayItems } from '@/features/timeline/lib/timelineDisplay';
 import {
   createReplayState,
+  buildLoadedChatSummary,
   normalizeStartNewConversationDetail,
   reconcileReplayAwaiting,
   replayEvent,
@@ -19,6 +20,7 @@ import {
 } from '@/features/conversation/lib/conversationPayload';
 import {
   getAutoReadTriggerKey,
+  isChatContentCommitted,
   shouldAutoMarkChatRead,
 } from '@/features/chats/hooks/useChatReadSync';
 import { useWorkerConversationSelection } from '@/features/workers/hooks/useWorkerConversationSelection';
@@ -249,6 +251,14 @@ describe('replayEvent tool migration', () => {
     });
     getChat.mockResolvedValue({
       data: {
+		chatId: 'chat-1',
+		agentKey: 'agent-alpha',
+		chatName: 'Authoritative chat',
+		createdAt: EPOCH_MS,
+		updatedAt: EPOCH_MS + 1,
+		lastRunId: 'run-1',
+		lastRunContent: 'authoritative answer',
+		read: { isRead: false, readRunId: '' },
         events: [
           {
             type: 'request.query',
@@ -274,10 +284,21 @@ describe('replayEvent tool migration', () => {
     expect(dispatchRecords).toEqual(
       expect.arrayContaining([
         { type: 'SET_CHAT_ID', insideFlushSync: true },
+        { type: 'UPSERT_CHAT', insideFlushSync: true },
         { type: 'RESET_CONVERSATION', insideFlushSync: true },
         { type: 'BATCH_UPDATE', insideFlushSync: true },
       ]),
     );
+		expect(dispatch).toHaveBeenCalledWith({
+			type: 'UPSERT_CHAT',
+			chat: expect.objectContaining({
+				chatId: 'chat-1',
+				agentKey: 'agent-alpha',
+				lastRunId: 'run-1',
+				lastRunContent: 'authoritative answer',
+				read: { isRead: false },
+			}),
+		});
   });
 
   it('keeps the source conversation mounted behind the transition overlay while loading another chat', async () => {
@@ -1254,7 +1275,7 @@ describe('replayEvent tool migration', () => {
           readRunId: 'run_0',
         },
       }),
-    ).toBe('chat_unread|run_1|123|111|run_0');
+    ).toBe('chat_unread|run_1|run_0');
 
     expect(
       getAutoReadTriggerKey({
@@ -1269,6 +1290,40 @@ describe('replayEvent tool migration', () => {
       }),
     ).toBe('');
   });
+
+	it('waits for the requested chat content commit before auto-read', () => {
+		expect(isChatContentCommitted({
+			chatId: 'chat_1',
+			transition: { targetChatId: 'chat_1', phase: 'applying' },
+		})).toBe(false);
+		expect(isChatContentCommitted({
+			chatId: 'chat_1',
+			transition: { targetChatId: 'chat_1', phase: 'ready' },
+		})).toBe(true);
+		expect(isChatContentCommitted({
+			chatId: 'chat_1',
+			transition: null,
+		})).toBe(true);
+	});
+
+	it('normalizes authoritative /api/chat summary fields for an uncached route target', () => {
+		expect(buildLoadedChatSummary('route-chat', {
+			chatId: 'route-chat',
+			agentKey: 'agent-alpha',
+			chatName: 'Route chat',
+			createdAt: EPOCH_MS,
+			updatedAt: EPOCH_MS + 1,
+			lastRunId: 'run-2',
+			lastRunContent: 'Visible answer',
+			read: { isRead: false, readAt: EPOCH_MS - 1, readRunId: 'run-1' },
+		})).toEqual(expect.objectContaining({
+			chatId: 'route-chat',
+			agentKey: 'agent-alpha',
+			lastRunId: 'run-2',
+			lastRunContent: 'Visible answer',
+			read: { isRead: false, readAt: EPOCH_MS - 1, readRunId: 'run-1' },
+		}));
+	});
 
   it('loads the latest worker chat when preferNewChat sees pending awaiting', async () => {
     const state = createWorkerConversationState({

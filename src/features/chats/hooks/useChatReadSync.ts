@@ -30,10 +30,21 @@ export function getAutoReadTriggerKey(
 	return [
 		String(chat?.chatId || "").trim(),
 		String(chat?.lastRunId || "").trim(),
-		String(chat?.updatedAt ?? "").trim(),
-		String(chat?.read?.readAt ?? "").trim(),
 		String(chat?.read?.readRunId || "").trim(),
 	].join("|");
+}
+
+export function isChatContentCommitted(input: {
+	chatId: string;
+	transition: { targetChatId?: string; phase?: string } | null | undefined;
+}): boolean {
+	const chatId = String(input.chatId || "").trim();
+	if (!chatId) return false;
+	if (!input.transition) return true;
+	return (
+		String(input.transition.targetChatId || "").trim() === chatId &&
+		input.transition.phase === "ready"
+	);
 }
 
 export function useChatReadSync(): void {
@@ -97,8 +108,13 @@ export function useChatReadSync(): void {
 		[state.chatId, state.chats],
 	);
 	const autoReadTriggerKey = useMemo(
-		() => getAutoReadTriggerKey(activeChat),
-		[activeChat],
+		() => isChatContentCommitted({
+			chatId: String(state.chatId || ""),
+			transition: state.chatTransition,
+		})
+			? getAutoReadTriggerKey(activeChat)
+			: "",
+		[activeChat, state.chatId, state.chatTransition],
 	);
 
 	useEffect(() => {
