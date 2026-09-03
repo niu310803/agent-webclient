@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 export type DesktopRouteChangedPayload = {
@@ -11,8 +11,19 @@ export type DesktopRouteChangedPayload = {
 
 type DesktopRouteCommand = {
   target: string;
-  routeRevision: number | null;
+  routeRevision: number;
 };
+
+export type DesktopRouteStatus =
+  | {
+      type: "desktopRouteReady";
+      routerLocation: string;
+    }
+  | {
+      type: "desktopRouteApplied";
+      routeRevision: number;
+      routerLocation: string;
+    };
 
 type DesktopRouteSubscriber = (
   target: string,
@@ -28,7 +39,7 @@ type DesktopRouteBridge = {
 type DesktopRouteElectronAPI = {
   onFromMain?: (
     channel: string,
-    callback: (event: unknown, payload: DesktopRouteChangedPayload) => void,
+    callback: (event: unknown, payload: unknown) => void,
   ) => unknown;
 };
 
@@ -38,12 +49,14 @@ type DesktopRouteWindow = Window & typeof globalThis & {
 };
 
 const DESKTOP_ROUTE_CHANGED_MESSAGE_TYPE = "desktopRouteChanged";
+const DESKTOP_ROUTE_READY_MESSAGE_TYPE = "desktopRouteReady";
 const DESKTOP_ROUTE_APPLIED_MESSAGE_TYPE = "desktopRouteApplied";
 export const SERVICE_WEBVIEW_BRIDGE_ROUTE_CHANNEL =
   "desktop:service-webview:route";
-export const PAGE_TO_PRELOAD_ROUTE_ACK_EVENT =
-  "__desktopServiceWebviewRouteApplied";
+export const PAGE_TO_PRELOAD_ROUTE_STATUS_EVENT =
+  "__desktopServiceWebviewRouteStatus";
 const DESKTOP_ROUTE_BRIDGE_KEY = "__AGENT_WEBCLIENT_DESKTOP_ROUTE_BRIDGE__";
+const MAX_DESKTOP_ROUTE_LENGTH = 8_192;
 
 let fallbackBridge: DesktopRouteBridge | null = null;
 
@@ -64,18 +77,33 @@ function reportDesktopRouteDiagnostic(
   console.info("[desktop-route]", stage, details);
 }
 
-function acknowledgeDesktopRoute(command: DesktopRouteCommand): void {
-  if (command.routeRevision === null || typeof window === "undefined") {
+function sendDesktopRouteStatus(status: DesktopRouteStatus): void {
+  if (typeof window === "undefined") {
     return;
   }
-  window.dispatchEvent(new CustomEvent(PAGE_TO_PRELOAD_ROUTE_ACK_EVENT, {
-    detail: {
-      type: DESKTOP_ROUTE_APPLIED_MESSAGE_TYPE,
-      routeRevision: command.routeRevision,
-      routerLocation: command.target,
-    },
+  window.dispatchEvent(new CustomEvent(PAGE_TO_PRELOAD_ROUTE_STATUS_EVENT, {
+    detail: status,
   }));
-  reportDesktopRouteDiagnostic("router-ack", {
+}
+
+function reportRouterReady(routerLocation: string): void {
+  sendDesktopRouteStatus({
+    type: DESKTOP_ROUTE_READY_MESSAGE_TYPE,
+    routerLocation,
+  });
+  reportDesktopRouteDiagnostic("router-ready", {
+    routerLocation,
+    physicalLocation: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+  });
+}
+
+function acknowledgeDesktopRoute(command: DesktopRouteCommand): void {
+  sendDesktopRouteStatus({
+    type: DESKTOP_ROUTE_APPLIED_MESSAGE_TYPE,
+    routeRevision: command.routeRevision,
+    routerLocation: command.target,
+  });
+  reportDesktopRouteDiagnostic("router-applied", {
     routeRevision: command.routeRevision,
     routerLocation: command.target,
     physicalLocation: `${window.location.pathname}${window.location.search}${window.location.hash}`,
@@ -86,7 +114,11 @@ export function buildDesktopRouteTarget(
   payload: DesktopRouteChangedPayload,
 ): string | null {
   const rawPathname = normalizeRoutePart(payload.pathname);
-  if (!rawPathname) {
+  if (
+    !rawPathname ||
+    rawPathname.length > MAX_DESKTOP_ROUTE_LENGTH ||
+    /[\u0000-\u001f\u007f]/u.test(rawPathname)
+  ) {
     return null;
   }
 
@@ -107,6 +139,9 @@ export function buildDesktopRouteTarget(
   const pathname = pathnameWithoutQuery.startsWith("/")
     ? pathnameWithoutQuery || "/"
     : `/${pathnameWithoutQuery}`;
+  if (pathname.startsWith("//") || pathname.includes("\\")) {
+    return null;
+  }
   const rawSearch = normalizeRoutePart(payload.search) || queryFromPath;
   const rawHash = normalizeRoutePart(payload.hash) || hashFromPath;
   const search = rawSearch
@@ -120,7 +155,12 @@ export function buildDesktopRouteTarget(
       : `#${rawHash}`
     : "";
 
-  return `${pathname}${search}${hash}`;
+  const target = `${pathname}${search}${hash}`;
+  return target.length <= MAX_DESKTOP_ROUTE_LENGTH &&
+      !/[\u0000-\u001f\u007f]/u.test(target) &&
+      !target.includes("\\")
+    ? target
+    : null;
 }
 
 export function buildRouterLocationTarget(location: {
@@ -160,18 +200,26 @@ function getDesktopRouteBridge(): DesktopRouteBridge {
   return desktopWindow[DESKTOP_ROUTE_BRIDGE_KEY];
 }
 
-function dispatchDesktopRoutePayload(payload: DesktopRouteChangedPayload): void {
-  if (payload.type !== DESKTOP_ROUTE_CHANGED_MESSAGE_TYPE) {
+function dispatchDesktopRoutePayload(payload: unknown): void {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return;
   }
-  const target = buildDesktopRouteTarget(payload);
+  const commandPayload = payload as DesktopRouteChangedPayload;
+  if (commandPayload.type !== DESKTOP_ROUTE_CHANGED_MESSAGE_TYPE) {
+    return;
+  }
+  const target = buildDesktopRouteTarget(commandPayload);
   if (!target) {
+    return;
+  }
+  const routeRevision = readRouteRevision(commandPayload.routeRevision);
+  if (routeRevision === null) {
     return;
   }
 
   const command: DesktopRouteCommand = {
     target,
-    routeRevision: readRouteRevision(payload.routeRevision),
+    routeRevision,
   };
   reportDesktopRouteDiagnostic("bridge-received", {
     routeRevision: command.routeRevision,
@@ -246,11 +294,11 @@ export const useDesktopRouteChange = () => {
   routerTargetRef.current = buildRouterLocationTarget(location);
 
   useEffect(() => {
-    return subscribeDesktopRouteChanges((target, command) => {
+    const unsubscribe = subscribeDesktopRouteChanges((target, command) => {
       // Desktop may already have updated the physical guest URL while React
       // Router still owns the previous route. Only Router location is a valid
       // dedupe signal for this bridge.
-      pendingCommandRef.current = command.routeRevision === null ? null : command;
+      pendingCommandRef.current = command;
       if (routerTargetRef.current === target) {
         acknowledgeDesktopRoute(command);
         pendingCommandRef.current = null;
@@ -262,11 +310,13 @@ export const useDesktopRouteChange = () => {
         target,
         physicalLocation: `${window.location.pathname}${window.location.search}${window.location.hash}`,
       });
-      navigate(target, { replace: true });
+      navigate(target, { replace: true, flushSync: true });
     });
+    reportRouterReady(routerTargetRef.current);
+    return unsubscribe;
   }, [navigate]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const pending = pendingCommandRef.current;
     if (!pending || routerTargetRef.current !== pending.target) {
       return;

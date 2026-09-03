@@ -447,6 +447,7 @@ export function useConversationActions() {
       const loadingCurrentChat = Boolean(currentChatId && currentChatId === chatId);
       const existingActiveRun = stateRef.current.currentChatActiveRun;
       const transitionStartsInBackground = Boolean(
+        loadingCurrentChat &&
         existingActiveRun?.chatId === chatId &&
         String(existingActiveRun.runId || '').trim(),
       );

@@ -10,7 +10,7 @@
 
 .conversation-transition-overlay {
     opacity: 1;
-    transition: opacity 180ms ease-out;
+    transition: opacity 80ms ease-out;
     will-change: opacity;
 }
 

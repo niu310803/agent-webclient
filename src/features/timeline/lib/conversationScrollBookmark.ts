@@ -190,6 +190,6 @@ export function resolveConversationRestoreIndex(
   }
   const fallback = Number.isFinite(bookmark.anchorIndex)
     ? Math.floor(bookmark.anchorIndex)
-    : 0;
-  return Math.max(0, Math.min(itemKeys.length - 1, fallback));
+    : -1;
+  return fallback >= 0 && fallback < itemKeys.length ? fallback : -1;
 }

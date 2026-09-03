@@ -336,6 +336,41 @@ describe('replayEvent tool migration', () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: 'CLEAR_CONVERSATION_OVERVIEW' });
   });
 
+  it('starts a cross-chat transition as blocking until /api/chat classifies the target', async () => {
+    const state = createInitialState();
+    state.chatId = 'chat_old';
+    state.currentChatActiveRun = {
+      chatId: 'chat_new',
+      runId: 'stale-local-run',
+    };
+    const { actions, dispatch } = renderChatActions(state);
+    getChat.mockResolvedValue({
+      data: {
+        events: [],
+        activeRun: { runId: '   ' },
+        runs: [],
+      },
+    });
+
+    await actions?.loadChat('chat_new');
+
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'BEGIN_CHAT_TRANSITION',
+      transition: expect.objectContaining({
+        sourceChatId: 'chat_old',
+        targetChatId: 'chat_new',
+        kind: 'history-switch',
+        displayMode: 'blocking',
+      }),
+    }));
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'SET_CHAT_TRANSITION_DISPLAY_MODE',
+      seq: 1,
+      targetChatId: 'chat_new',
+      displayMode: 'blocking',
+    });
+  });
+
   it('captures before beginning a same-chat reload transaction', async () => {
     const state = createInitialState();
     state.chatId = 'chat_same';

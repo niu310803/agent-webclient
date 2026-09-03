@@ -148,11 +148,10 @@ const VIRTUOSO_CLASS_NAME = [
 ].join(" ");
 const CONVERSATION_TRANSITION_OVERLAY_CLASS_NAME =
   "conversation-transition-overlay tw:absolute tw:inset-0 tw:z-20 tw:grid tw:place-items-center tw:overflow-hidden tw:bg-bg-base tw:px-6";
-const CONVERSATION_TRANSITION_OVERLAY_HOLD_MS = 320;
-const CONVERSATION_TRANSITION_OVERLAY_FADE_MS = 180;
+const CONVERSATION_TRANSITION_OVERLAY_HOLD_MS = 160;
+const CONVERSATION_TRANSITION_OVERLAY_FADE_MS = 80;
 const CONVERSATION_TRANSITION_OVERLAY_REDUCED_MOTION_HOLD_MS =
-  CONVERSATION_TRANSITION_OVERLAY_HOLD_MS +
-  CONVERSATION_TRANSITION_OVERLAY_FADE_MS;
+  CONVERSATION_TRANSITION_OVERLAY_HOLD_MS;
 const CONVERSATION_TRANSITION_REDUCED_MOTION_QUERY =
   "(prefers-reduced-motion: reduce)";
 const CONVERSATION_TRANSITION_SKELETON_CLASS_NAME =
@@ -777,6 +776,11 @@ function findConversationItemElement(
   return null;
 }
 
+function isConversationScrollerAtBottom(scroller: HTMLElement): boolean {
+  const maximumScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  return maximumScrollTop - scroller.scrollTop <= 1;
+}
+
 function ConversationTransitionOverlay({
   busy,
   error,
@@ -870,9 +874,10 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   const [containerWidth, setContainerWidth] = useState(0);
   const isAtBottomRef = useRef(true);
   const restoringRef = useRef(false);
+  const restoreTargetModeRef = useRef<"anchor" | "bottom" | null>(null);
+  const restoreAtBottomObservedRef = useRef(false);
   const rangeRef = useRef<ListRange>({ startIndex: 0, endIndex: 0 });
   const saveTimerRef = useRef<number | null>(null);
-  const restoreTimeoutRef = useRef<number | null>(null);
   const restoredTransitionSeqRef = useRef(0);
   const lastScrollRequestIdRef = useRef(
     state.conversationScrollRequest?.id || 0,
@@ -1602,7 +1607,12 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   }, []);
 
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
-    if (restoringRef.current) return;
+    if (restoringRef.current) {
+      if (restoreTargetModeRef.current === "bottom") {
+        restoreAtBottomObservedRef.current = atBottom;
+      }
+      return;
+    }
     isAtBottomRef.current = atBottom;
     setIsAtBottom(atBottom);
   }, []);
@@ -1702,17 +1712,50 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     restoredTransitionSeqRef.current = transition.seq;
     restoringRef.current = true;
     const bookmark = currentBookmark;
-    const shouldRestoreBottom = bookmark?.atBottom ?? true;
+    const bookmarkMatchesCurrentTimeline = Boolean(
+      bookmark &&
+        bookmark.dataSignature === dataSignature &&
+        bookmark.layoutSignature === layoutSignature,
+    );
+    const restorableBookmark = bookmarkMatchesCurrentTimeline ? bookmark : null;
+    const resolvedBookmarkIndex = restorableBookmark && !restorableBookmark.atBottom
+      ? resolveConversationRestoreIndex(restorableBookmark, virtualItemKeys)
+      : -1;
+    const shouldRestoreBottom = Boolean(
+      !restorableBookmark ||
+        restorableBookmark.atBottom ||
+        resolvedBookmarkIndex < 0,
+    );
     isAtBottomRef.current = shouldRestoreBottom;
     setIsAtBottom(shouldRestoreBottom);
+    restoreTargetModeRef.current = shouldRestoreBottom ? "bottom" : "anchor";
+    restoreAtBottomObservedRef.current = false;
     let cancelled = false;
     let frameId = 0;
     let stableFrameCount = 0;
     let issuedIndexScroll = false;
-    const targetIndex = bookmark
-      ? resolveConversationRestoreIndex(bookmark, virtualItemKeys)
-      : virtualItemKeys.length - 1;
+    const targetIndex = shouldRestoreBottom
+      ? virtualItemKeys.length - 1
+      : resolvedBookmarkIndex;
     const targetItemKey = targetIndex >= 0 ? virtualItemKeys[targetIndex] : "";
+    const restoreStartedAt = Date.now();
+    const fallbackReason = !bookmark
+      ? "missing-bookmark"
+      : !bookmarkMatchesCurrentTimeline
+        ? "signature-mismatch"
+        : !bookmark.atBottom && resolvedBookmarkIndex < 0
+          ? "unresolved-anchor"
+          : "";
+    dispatch({
+      type: "APPEND_DEBUG",
+      line: `[chat-scroll-restore-start] chatId=${transition.targetChatId} transitionSeq=${transition.seq} mode=${shouldRestoreBottom ? "bottom" : "anchor"} targetIndex=${targetIndex} targetKey=${targetItemKey || "none"} targetOffset=${restorableBookmark?.anchorOffset || 0}`,
+    });
+    if (fallbackReason) {
+      dispatch({
+        type: "APPEND_DEBUG",
+        line: `[chat-scroll-restore-fallback-bottom] chatId=${transition.targetChatId} transitionSeq=${transition.seq} reason=${fallbackReason}`,
+      });
+    }
 
     const isStillCurrent = () => {
       const latest = appContext?.stateRef.current.chatTransition;
@@ -1724,15 +1767,20 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     };
     if (!isStillCurrent()) {
       restoringRef.current = false;
+      restoreTargetModeRef.current = null;
+      restoreAtBottomObservedRef.current = false;
       return;
     }
     const finish = () => {
       if (cancelled || !isStillCurrent()) return;
-      if (restoreTimeoutRef.current !== null) {
-        window.clearTimeout(restoreTimeoutRef.current);
-        restoreTimeoutRef.current = null;
-      }
       restoringRef.current = false;
+      restoreTargetModeRef.current = null;
+      restoreAtBottomObservedRef.current = false;
+      const scroller = scrollerRef.current;
+      dispatch({
+        type: "APPEND_DEBUG",
+        line: `[chat-scroll-restore-ready] chatId=${transition.targetChatId} transitionSeq=${transition.seq} mode=${shouldRestoreBottom ? "bottom" : "anchor"} targetIndex=${targetIndex} targetKey=${targetItemKey || "none"} targetOffset=${restorableBookmark?.anchorOffset || 0} scrollTop=${scroller?.scrollTop || 0} elapsedMs=${Math.max(0, Date.now() - restoreStartedAt)}`,
+      });
       dispatch({
         type: "ADVANCE_CHAT_TRANSITION",
         seq: transition.seq,
@@ -1760,7 +1808,10 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
             align: "end",
           });
         }
-        stableFrameCount += 1;
+        const scroller = scrollerRef.current;
+        const bottomReached = restoreAtBottomObservedRef.current ||
+          Boolean(scroller && isConversationScrollerAtBottom(scroller));
+        stableFrameCount = bottomReached ? stableFrameCount + 1 : 0;
       } else {
         const scroller = scrollerRef.current;
         const element =
@@ -1781,7 +1832,7 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
           const delta =
             element.getBoundingClientRect().top -
             scroller.getBoundingClientRect().top -
-            (bookmark?.anchorOffset || 0);
+            (restorableBookmark?.anchorOffset || 0);
           if (Math.abs(delta) <= 1) {
             stableFrameCount += 1;
           } else {
@@ -1808,21 +1859,20 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
         align: "start",
       });
     }
-    restoreTimeoutRef.current = window.setTimeout(finish, 800);
     frameId = window.requestAnimationFrame(settle);
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(frameId);
-      if (restoreTimeoutRef.current !== null) {
-        window.clearTimeout(restoreTimeoutRef.current);
-        restoreTimeoutRef.current = null;
-      }
       restoringRef.current = false;
+      restoreTargetModeRef.current = null;
+      restoreAtBottomObservedRef.current = false;
     };
   }, [
     appContext?.stateRef,
     currentBookmark,
+    dataSignature,
     dispatch,
+    layoutSignature,
     matchingSnapshot,
     state.chatId,
     transition,
@@ -1835,9 +1885,6 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       statusTimerRef.current.clear();
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current);
-      }
-      if (restoreTimeoutRef.current !== null) {
-        window.clearTimeout(restoreTimeoutRef.current);
       }
     };
   }, []);
