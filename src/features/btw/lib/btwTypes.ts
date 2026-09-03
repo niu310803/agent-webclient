@@ -9,6 +9,7 @@ import type {
   QueryModelOverride,
 } from "@/shared/data";
 import type { RunOwner } from "@/shared/data/runOwner";
+import type { SelectedTextFragment } from "@/features/selection/lib/selectedTextReference";
 
 export type BTWSessionStatus = "idle" | "running" | "error";
 
@@ -37,6 +38,7 @@ export interface BTWSessionState {
   interruptReady: boolean;
   interruptPending: boolean;
   draft: string;
+  draftSelections: SelectedTextFragment[];
   error: string;
   focusToken: number;
   lastSeq: number;

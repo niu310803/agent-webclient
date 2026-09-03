@@ -4,6 +4,7 @@ export { FileViewerPage } from "./FileViewerPage";
 export { OverviewViewerPage } from "./OverviewViewerPage";
 export { PlanningViewerPage } from "./PlanningViewerPage";
 export { ResourceViewerPage } from "./ResourceViewerPage";
+export { SelectionExplainPage } from "./SelectionExplainPage";
 export { SkillViewerPage } from "./SkillViewerPage";
 export { SourceViewerPage } from "./SourceViewerPage";
 export { WebViewerPage } from "./WebViewerPage";

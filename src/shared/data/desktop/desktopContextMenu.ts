@@ -6,8 +6,19 @@ import {
   AGENT_WEBCLIENT_WORKPANEL_PREVIEW_REVIEW_VERSION,
   AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_ACTION,
   AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_VERSION,
+  AGENT_WEBCLIENT_SELECTION_ACTION,
+  AGENT_WEBCLIENT_SELECTION_ACTION_RESULT_PAGE_EVENT,
+  AGENT_WEBCLIENT_SELECTION_ACTION_VERSION,
+  type AgentWebclientSelectionAction,
+  type AgentWebclientSelectionActionErrorCode,
+  type AgentWebclientSelectionActionId,
   type AgentWebclientWorkPanelPreviewReviewAction,
 } from "@/features/transport/contracts/generated/agentWebclientBridge";
+import {
+  SELECTED_TEXT_MAX_CHARACTERS,
+  createSelectedTextFragment,
+  type SelectedTextFragment,
+} from "@/features/selection/lib/selectedTextReference";
 
 export const SERVICE_WEBVIEW_BRIDGE_ACTION_CHANNEL =
   "desktop:service-webview:action";
@@ -55,6 +66,16 @@ type DesktopContextMenuWindow = Window & typeof globalThis & {
 const targets = new WeakMap<Element, DesktopContextMenuTargetDescriptor>();
 let currentResourceDownloadHandler: (() => void | Promise<void>) | null = null;
 let currentPreviewReviewHandler: ((action: AgentWebclientWorkPanelPreviewReviewAction) => void) | null = null;
+type DesktopSelectionActionHandlerResult = {
+  ok: boolean;
+  code?: AgentWebclientSelectionActionErrorCode;
+  handoff?: { chatId: string; runId: string };
+};
+type DesktopSelectionActionHandler = (input: {
+  action: AgentWebclientSelectionActionId;
+  fragment: SelectedTextFragment;
+}) => Promise<DesktopSelectionActionHandlerResult> | DesktopSelectionActionHandlerResult;
+let currentSelectionActionHandler: DesktopSelectionActionHandler | null = null;
 export const DESKTOP_COMPOSER_REVIEW_DRAFT_EVENT = "agent:insert-workpanel-review-draft";
 
 const CAPABILITY_BY_COMMAND: Record<DesktopContextMenuCommand, string> = {
@@ -168,8 +189,42 @@ export function registerDesktopCurrentPreviewReview(
   };
 }
 
+export function useDesktopSelectionActionHandler(
+  handler: DesktopSelectionActionHandler | null,
+) {
+  const handlerRef = useRef(handler);
+  const enabled = handler !== null;
+  handlerRef.current = handler;
+  useEffect(() => {
+    if (!enabled) return;
+    const registeredHandler: DesktopSelectionActionHandler = (input) => {
+      const current = handlerRef.current;
+      return current
+        ? current(input)
+        : { ok: false, code: "surface_not_ready" };
+    };
+    return registerDesktopSelectionActionHandler(registeredHandler);
+  }, [enabled]);
+}
+
+export function registerDesktopSelectionActionHandler(
+  handler: DesktopSelectionActionHandler,
+) {
+  currentSelectionActionHandler = handler;
+  return () => {
+    if (currentSelectionActionHandler === handler) {
+      currentSelectionActionHandler = null;
+    }
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]) {
+  const keys = new Set(allowed);
+  return Object.keys(value).every((key) => keys.has(key));
 }
 
 function readCoordinate(value: unknown) {
@@ -183,6 +238,136 @@ function readTarget(payload: Record<string, unknown>) {
   const y = readCoordinate(payload.y);
   if (x === null || y === null) return null;
   return resolveDesktopContextMenuTargetAt(x, y);
+}
+
+function resolveTargetFromNode(node: Node | null) {
+  let element = node instanceof Element ? node : node?.parentElement || null;
+  while (element) {
+    const target = targets.get(element);
+    if (target) return target;
+    element = element.parentElement;
+  }
+  return null;
+}
+
+function readSelectionAction(payload: Record<string, unknown>) {
+  if (
+    !hasOnlyKeys(payload, [
+      "action",
+      "version",
+      "requestId",
+      "selectionId",
+      "operation",
+      "targetId",
+      "targetKind",
+      "start",
+      "end",
+    ]) ||
+    payload.action !== AGENT_WEBCLIENT_SELECTION_ACTION ||
+    payload.version !== AGENT_WEBCLIENT_SELECTION_ACTION_VERSION ||
+    typeof payload.requestId !== "string" ||
+    !payload.requestId ||
+    typeof payload.selectionId !== "string" ||
+    !payload.selectionId ||
+    !["add-to-chat", "more-details", "ask-in-side-chat"].includes(
+      String(payload.operation || ""),
+    ) ||
+    typeof payload.targetId !== "string" ||
+    !["message", "code"].includes(String(payload.targetKind || ""))
+  ) {
+    return null;
+  }
+  const start = isRecord(payload.start) ? payload.start : null;
+  const end = isRecord(payload.end) ? payload.end : null;
+  if (
+    !start ||
+    !end ||
+    !hasOnlyKeys(start, ["x", "y"]) ||
+    !hasOnlyKeys(end, ["x", "y"])
+  ) return null;
+  const startTarget = readTarget({ x: start.x, y: start.y });
+  const endTarget = readTarget({ x: end.x, y: end.y });
+  if (
+    !startTarget ||
+    !endTarget ||
+    startTarget.targetId !== payload.targetId ||
+    endTarget.targetId !== payload.targetId ||
+    startTarget.kind !== payload.targetKind ||
+    endTarget.kind !== payload.targetKind
+  ) {
+    return null;
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return null;
+  const anchorTarget = resolveTargetFromNode(selection.anchorNode);
+  const focusTarget = resolveTargetFromNode(selection.focusNode);
+  if (
+    !anchorTarget ||
+    !focusTarget ||
+    anchorTarget.targetId !== payload.targetId ||
+    focusTarget.targetId !== payload.targetId ||
+    anchorTarget.kind !== payload.targetKind ||
+    focusTarget.kind !== payload.targetKind
+  ) {
+    return null;
+  }
+  const text = selection.toString().trim();
+  if (!text) return null;
+  if (text.length > SELECTED_TEXT_MAX_CHARACTERS) {
+    return { error: "selection_too_large" as const };
+  }
+  const fragment = createSelectedTextFragment({
+    text,
+    targetId: payload.targetId,
+    sourceKind: payload.targetKind as "message" | "code",
+  });
+  if (!fragment) return null;
+  return {
+    action: payload as unknown as AgentWebclientSelectionAction,
+    fragment,
+  };
+}
+
+function emitSelectionActionResult(
+  requestId: string,
+  result: DesktopSelectionActionHandlerResult,
+) {
+  window.dispatchEvent(new CustomEvent(AGENT_WEBCLIENT_SELECTION_ACTION_RESULT_PAGE_EVENT, {
+    detail: {
+      version: AGENT_WEBCLIENT_SELECTION_ACTION_VERSION,
+      requestId,
+      ok: result.ok,
+      ...(result.code ? { code: result.code } : {}),
+      ...(result.handoff ? { handoff: result.handoff } : {}),
+    },
+  }));
+}
+
+async function handleSelectionAction(payload: Record<string, unknown>) {
+  const requestId = typeof payload.requestId === "string" ? payload.requestId : "";
+  if (!requestId) return;
+  const selectionAction = readSelectionAction(payload);
+  if (!selectionAction) {
+    emitSelectionActionResult(requestId, { ok: false, code: "stale_selection" });
+    return;
+  }
+  if ("error" in selectionAction) {
+    emitSelectionActionResult(requestId, { ok: false, code: selectionAction.error });
+    return;
+  }
+  if (!currentSelectionActionHandler) {
+    emitSelectionActionResult(requestId, { ok: false, code: "surface_not_ready" });
+    return;
+  }
+  try {
+    const result = await currentSelectionActionHandler({
+      action: selectionAction.action.operation,
+      fragment: selectionAction.fragment,
+    });
+    emitSelectionActionResult(requestId, result);
+  } catch {
+    emitSelectionActionResult(requestId, { ok: false, code: "run_start_failed" });
+  }
 }
 
 function safeWebUrl(value: string | undefined) {
@@ -259,6 +444,9 @@ export function initializeDesktopContextMenuBridge() {
       if (!isRecord(value)) return;
       if (value.action === "contextMenu.resolve") handleResolve(value);
       if (value.action === "contextMenu.execute") handleExecute(value);
+      if (value.action === AGENT_WEBCLIENT_SELECTION_ACTION) {
+        void handleSelectionAction(value);
+      }
       if (
         value.action === AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_ACTION &&
         value.version === AGENT_WEBCLIENT_WORKPANEL_RESOURCE_DOWNLOAD_VERSION &&

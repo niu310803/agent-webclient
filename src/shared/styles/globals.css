@@ -66,6 +66,7 @@
 @import "./globals/timeline.css";
 @import "./globals/tools.css";
 @import "./globals/composer.css";
+@import "./globals/selection.css";
 @import "./globals/voice.css";
 @import "./globals/panels.css";
 @import "./globals/sidebar.css";

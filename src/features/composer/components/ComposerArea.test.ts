@@ -233,6 +233,9 @@ jest.mock("@/features/composer/hooks/useComposerSend", () => ({
     steerSubmitting: false,
   }),
 }));
+jest.mock("@/features/selection/hooks/useDesktopSelectionActions", () => ({
+  useDesktopSelectionActions: () => undefined,
+}));
 
 const mockUseComposerSlash = jest.fn(
   (_input: Record<string, unknown>) => ({

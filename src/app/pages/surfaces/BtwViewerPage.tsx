@@ -4,6 +4,11 @@ import { BtwTabView } from "@/features/btw/components/BtwTab";
 import { useStandaloneBtwRuntime } from "@/features/btw/hooks/useStandaloneBtwRuntime";
 import { useChatSurfaceReplay } from "@/features/surfaces/useChatSurfaceReplay";
 import { useI18n } from "@/shared/i18n";
+import {
+  isSelectionTransferTarget,
+  receiveSelectedTextTransfers,
+  SELECTION_TRANSFER_TARGET_QUERY_PARAM,
+} from "@/features/selection/lib/selectionTransfer";
 import { IndependentSurfaceFrame } from "./SurfaceFrame";
 
 export const BtwViewerPage: React.FC = () => {
@@ -11,6 +16,14 @@ export const BtwViewerPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const chatId = String(routeChatId || "").trim();
   const initialBtwId = String(searchParams.get("btwId") || "").trim();
+  const rawSelectionTransferTarget = String(
+    searchParams.get(SELECTION_TRANSFER_TARGET_QUERY_PARAM) || "",
+  ).trim();
+  const selectionTransferTarget = isSelectionTransferTarget(
+    rawSelectionTransferTarget,
+  )
+    ? rawSelectionTransferTarget
+    : "";
   const { t } = useI18n();
   const chatRuntime = useChatSurfaceReplay({ chatId });
   const updateBtwId = React.useCallback((btwId: string) => {
@@ -26,6 +39,19 @@ export const BtwViewerPage: React.FC = () => {
     owner: chatRuntime.snapshot?.owner || null,
     onBtwId: updateBtwId,
   });
+  const acceptTransferredFragment = React.useCallback((fragment: Parameters<
+    typeof runtime.addDraftSelection
+  >[0]) => {
+    return runtime.addDraftSelection(fragment);
+  }, [runtime.addDraftSelection]);
+  React.useEffect(() => {
+    if (!selectionTransferTarget || !chatId) return;
+    return receiveSelectedTextTransfers({
+      targetId: selectionTransferTarget,
+      chatId,
+      onFragment: acceptTransferredFragment,
+    });
+  }, [acceptTransferredFragment, chatId, selectionTransferTarget]);
   const invalid = !chatId;
   const missingOwner = chatRuntime.status === "ready" && !chatRuntime.snapshot?.owner;
   return (
@@ -39,8 +65,9 @@ export const BtwViewerPage: React.FC = () => {
       <BtwTabView
         parentChatId={chatId}
         session={runtime.session}
-        onSend={runtime.send}
+        onSend={() => runtime.send(t("btw.selectionOnlyPrompt"))}
         onDraftChange={runtime.setDraft}
+        onRemoveDraftSelection={runtime.removeDraftSelection}
         onInterrupt={runtime.interrupt}
         onNewBranch={() => {
           const created = runtime.newBranch();

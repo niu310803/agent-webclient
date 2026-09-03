@@ -63,6 +63,9 @@ import { isChatTransitionBlockingInteractions } from "@/features/conversation/li
 import { UiButton } from "@/shared/ui/UiButton";
 import { MaterialIcon } from "@/shared/icons/material";
 import { useHostRequiredSkills } from "@/features/composer/components/HostRequiredSkillsContext";
+import { SelectedTextFragmentsPill } from "@/features/selection/components/SelectedTextFragmentsPill";
+import { useDesktopSelectionActions } from "@/features/selection/hooks/useDesktopSelectionActions";
+import { useSelectedTextFragments } from "@/features/selection/hooks/useSelectedTextFragments";
 
 interface ComposerAreaProps {
   emptyInputMinRows?: number;
@@ -285,6 +288,26 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
       void message.error(text || t("composer.actions.screenshotFailed"));
     },
     state,
+  });
+  const selectedText = useSelectedTextFragments(state.chatId);
+  const combinedSendReferences = useMemo(
+    () => [...sendReferences, ...selectedText.references],
+    [selectedText.references, sendReferences],
+  );
+  const combinedSendAttachmentMeta = useMemo(
+    () => [
+      ...sendAttachmentMeta,
+      ...selectedText.attachments.map((attachment) => ({
+        ...attachment,
+        size: attachment.size ?? 0,
+      })),
+    ],
+    [selectedText.attachments, sendAttachmentMeta],
+  );
+  useDesktopSelectionActions({
+    addMainFragment: selectedText.addFragment,
+    model: modelOverride,
+    messageApi: message,
   });
 
   const {
@@ -537,8 +560,8 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     mustUseSkills: effectiveSkills.map((skill) => skill.key),
     selectSlashItem,
     onSelectSlashSkill: handleSelectSlashSkill,
-    sendAttachmentMeta,
-    sendReferences,
+    sendAttachmentMeta: combinedSendAttachmentMeta,
+    sendReferences: combinedSendReferences,
     setInputValue,
     setSlashDismissed,
     showSlashPalette,
@@ -627,7 +650,7 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
     isFrontendActive ||
     isAwaitingActive ||
     hasUploadingAttachments ||
-    !inputValue.trim();
+    !inputValue.trim() && selectedText.fragments.length === 0;
 
   const handleKeyDown = useComposerKeyboard({
     closeMention,
@@ -824,6 +847,11 @@ export const ComposerArea: React.FC<ComposerAreaProps> = ({
                   attachmentScrollState={attachmentScrollState}
                   onRemoveAttachment={handleRemoveAttachment}
                   onScroll={scrollComposerAttachments}
+                />
+                <SelectedTextFragmentsPill
+                  fragments={selectedText.fragments}
+                  variant="annotations"
+                  onRemove={selectedText.removeFragment}
                 />
                 <Flex wrap gap={4}>
                   {forcedSkills.map((skill) => (

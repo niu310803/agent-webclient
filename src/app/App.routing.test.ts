@@ -80,6 +80,8 @@ jest.mock("./pages/surfaces", () => ({
   OverviewViewerPage: () => null,
   PlanningViewerPage: () => null,
   ResourceViewerPage: () => null,
+  SelectionExplainPage: () => null,
+  SkillViewerPage: () => null,
   SourceViewerPage: () => null,
   WebViewerPage: () => null,
 }));
@@ -125,6 +127,7 @@ describe("App routing", () => {
         "/overview/:chatId",
         "/debug/:chatId",
         "/btw/:chatId",
+        "/selection-explain/:chatId",
         "/source-viewer/:sourceId",
         "/planning-viewer/:planningId",
         "/resource-viewer/:agentKey",

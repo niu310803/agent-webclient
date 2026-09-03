@@ -52,6 +52,7 @@ import {
   OverviewViewerPage,
   PlanningViewerPage,
   ResourceViewerPage,
+  SelectionExplainPage,
   SkillViewerPage,
   SourceViewerPage,
   WebViewerPage,
@@ -324,6 +325,14 @@ const router = createBrowserRouter(
           element: (
             <DocumentTitleRoute titleKey="btw.title">
               <BtwViewerPage />
+            </DocumentTitleRoute>
+          ),
+        },
+        {
+          path: SURFACE_ROUTE_PATHS.selectionExplain,
+          element: (
+            <DocumentTitleRoute titleKey="selection.explain.title">
+              <SelectionExplainPage />
             </DocumentTitleRoute>
           ),
         },
