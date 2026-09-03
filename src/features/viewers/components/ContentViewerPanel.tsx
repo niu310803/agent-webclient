@@ -596,7 +596,9 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   const canSaveDocument = editableTextDocument && !textTruncated && Boolean(
     documentRevision && (target.type === "file" || resourceSource),
   );
-  const canOverwriteArtifact = resourceSource?.kind === "artifact";
+  const documentSaveProfile = target.type === "file"
+    ? "workspace-file" as const
+    : resourceSource?.kind || "reference";
   const handleDocumentSave = React.useCallback(async (
     mode: "overwrite" | "new-artifact",
   ) => {
@@ -803,7 +805,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
               saving={documentSaving}
               dirty={documentDirty}
               canSave={canSaveDocument}
-              canOverwriteArtifact={canOverwriteArtifact}
+              saveProfile={documentSaveProfile}
               revision={documentRevision}
               onAnnotationCountChange={setDocumentAnnotationCount}
               onChange={setTextContent}
@@ -845,7 +847,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
               saving={documentSaving}
               dirty={documentDirty}
               canSave={canSaveDocument}
-              canOverwriteArtifact={canOverwriteArtifact}
+              saveProfile={documentSaveProfile}
               revision={documentRevision}
               onAnnotationCountChange={setDocumentAnnotationCount}
               onChange={setTextContent}

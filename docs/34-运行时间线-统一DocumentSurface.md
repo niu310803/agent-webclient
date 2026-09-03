@@ -18,13 +18,13 @@ Resource metadata 缺少权威 `X-Document-Kind` 时不把“缺字段”解释�
 
 ## 内容能力
 
-- Markdown、文本和代码使用 Monaco。Markdown 提供源码、净化预览和分屏，不执行 MDX 或内联 HTML 脚本。
-- 文本批注以 revision、line/column range 和 selected-text hash 锚定。本地编辑期间由 Monaco decoration 跟随，外部 revision 变更后显式失效。
+- Markdown、文本和代码使用 Monaco。具备可视化预览的文档在首次打开或切换文档时默认进入预览。Markdown 只保留预览和源码两种模式：源码使用 Monaco 直接编辑，预览用于阅读和选区批注，不提供分屏，不执行 MDX 或内联 HTML 脚本。
+- 源码文本批注以 revision、line/column range 和 selected-text hash 锚定；Markdown 预览选区在能唯一对应原文时同时保留 line/column，格式化后无法直接对应的选区保留脱敏原文和 hash。本地编辑期间由 Monaco decoration 跟随，外部 revision 变更后显式失效。
 - PDF 使用本地 PDF.js 只读 Viewer，支持页码、缩放与搜索。
 - Office 可预览时只读预览，否则显示元信息和显式操作。音视频使用媒体播放器。压缩包和未知二进制不读为文本，也不自动下载。
 - Standalone HTML 提供源码和 sandbox 预览；Standalone 图片对 PNG/JPEG/WebP 提供基础 Canvas 编辑和区域批注，其他格式保持只读。
 
-文档内容区不复用浏览器地址栏。文件名只显示在 WorkPanel Tab；Markdown 工具栏包含源码/预览/分屏、批注和保存，文本/代码只包含批注和保存。重新加载权威 revision 位于同一行的更多菜单，存在 dirty 修改时先确认丢弃。普通 Web、WebApp 与 loopback 实时网站仍保留刷新和地址栏。
+文档内容区不复用浏览器地址栏。文件名只显示在 WorkPanel Tab；Markdown 工具栏只包含预览/源码、预览选区批注和保存，文本/代码只包含批注和保存。保存统一先询问保存方式：Workspace File 默认并且只能覆盖原文件，Artifact 默认新建产物且可明确选择覆盖，Reference 只能新建产物。重新加载权威 revision 位于同一行的更多菜单，存在 dirty 修改时先确认丢弃。普通 Web、WebApp 与 loopback 实时网站仍保留刷新和地址栏。
 
 Document Surface 向 Desktop 宿主只提交当前可信 WorkPanel item 的 dirty、busy、annotation count 与“交给智能体”动作。Standalone 直接写入当前 Composer；Desktop 由宿主校验 owner Chat 和 item 后追加 Composer 草稿，不覆盖也不自动发送。
 
