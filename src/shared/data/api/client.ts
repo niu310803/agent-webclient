@@ -2045,12 +2045,15 @@ export interface ResourceDocumentTextResponse {
   revision: string;
   documentKind?: import("@/shared/types/document").DocumentContentKind;
   mimeType?: string;
+  sizeBytes?: number;
 }
 
 export type ResourceDocumentMetadataResponse = Omit<ResourceDocumentTextResponse, "content">;
 
 function resourceDocumentMetadata(response: Response): ResourceDocumentMetadataResponse {
   const rawKind = String(response.headers.get("X-ZenMind-Document-Kind") || "").trim();
+  const rawSize = String(response.headers.get("Content-Length") || "").trim();
+  const sizeBytes = rawSize === "" ? Number.NaN : Number(rawSize);
   const allowedKinds = new Set([
     "document-html", "document-image", "document-markdown", "document-text",
     "document-code", "document-pdf", "document-office", "document-audio",
@@ -2059,6 +2062,7 @@ function resourceDocumentMetadata(response: Response): ResourceDocumentMetadataR
   return {
     revision: String(response.headers.get("X-ZenMind-Resource-Revision") || "").trim(),
     mimeType: String(response.headers.get("Content-Type") || "").split(";", 1)[0].trim(),
+    ...(Number.isFinite(sizeBytes) && sizeBytes >= 0 ? { sizeBytes } : {}),
     ...(allowedKinds.has(rawKind)
       ? { documentKind: rawKind as ResourceDocumentMetadataResponse["documentKind"] }
       : {}),

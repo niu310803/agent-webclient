@@ -14,6 +14,7 @@ import {
   detectDocumentContentKind,
   detectViewerContentKind,
   isViewerContentSupported,
+  isKnownTextDocumentName,
   type ViewerContentKind,
   type ViewerTarget,
   viewerContentKindForDocument,
@@ -309,6 +310,8 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   const [resourceDocumentKind, setResourceDocumentKind] =
     React.useState<DocumentContentKind | undefined>();
   const [resourceMimeType, setResourceMimeType] = React.useState("");
+  const [resourceSizeBytes, setResourceSizeBytes] = React.useState<number | undefined>();
+  const [documentReloadRequest, setDocumentReloadRequest] = React.useState(0);
   const [documentSaving, setDocumentSaving] = React.useState(false);
   const [documentAnnotationCount, setDocumentAnnotationCount] = React.useState(0);
   const [browserImageState, setBrowserImageState] = React.useState({ dirty: false, busy: false, annotationCount: 0 });
@@ -415,6 +418,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
     setDocumentRevision("");
     setResourceDocumentKind(undefined);
     setResourceMimeType("");
+    setResourceSizeBytes(undefined);
     setDocumentSaving(false);
     setDocumentAnnotationCount(0);
     setBrowserImageState({ dirty: false, busy: false, annotationCount: 0 });
@@ -478,6 +482,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
         setDocumentRevision(document.revision || target.revision || "");
         setResourceDocumentKind(document.documentKind);
         setResourceMimeType(document.mimeType || target.mimeType || "");
+        setResourceSizeBytes(document.sizeBytes);
         const loadedKind = document.documentKind || target.documentKind;
         if (loadedKind === "document-html" || target.contentKind === "html") {
           setResourceHtmlContent(limitedText.content);
@@ -506,7 +511,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
       });
 
     return () => controller.abort();
-  }, [chatId, fileRequest, target, teamChat]);
+  }, [chatId, documentReloadRequest, fileRequest, target, teamChat]);
 
   React.useEffect(() => {
     if (target.type !== "resource") return;
@@ -517,6 +522,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
         setDocumentRevision(metadata.revision || target.revision || "");
         setResourceDocumentKind(metadata.documentKind);
         setResourceMimeType(metadata.mimeType || target.mimeType || "");
+        setResourceSizeBytes(metadata.sizeBytes);
         const textKind = metadata.documentKind === "document-html" ||
           metadata.documentKind === "document-markdown" ||
           metadata.documentKind === "document-text" ||
@@ -536,7 +542,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
         if (!controller.signal.aborted) setTextLoading(false);
       });
     return () => controller.abort();
-  }, [chatId, target, teamChat]);
+  }, [chatId, documentReloadRequest, target, teamChat]);
 
   React.useEffect(() => {
     if (
@@ -581,6 +587,12 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
     ["image/png", "image/jpeg", "image/webp"].includes(imageMimeType) &&
     Boolean(imageCommitSource && documentRevision);
   const documentDirty = editableTextDocument && textContent !== savedTextContent;
+  const handleDocumentReload = React.useCallback(() => {
+    if (documentDirty && !window.confirm(t("contentViewer.reload.confirmDiscard"))) {
+      return;
+    }
+    setDocumentReloadRequest((current) => current + 1);
+  }, [documentDirty]);
   const canSaveDocument = editableTextDocument && !textTruncated && Boolean(
     documentRevision && (target.type === "file" || resourceSource),
   );
@@ -663,6 +675,8 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
   );
   const metadataOnly = documentKind === "document-office" ||
     documentKind === "document-archive" || documentKind === "document-binary";
+  const unsupportedTextEncoding = documentKind === "document-binary" &&
+    isKnownTextDocumentName(viewerName);
   const viewable = isViewerContentSupported(contentKind) || metadataOnly;
   const desktopLocalResourceIdentity = target.type === "resource"
     ? resolveDesktopCurrentResourceIdentity(chatId, target.url)
@@ -737,12 +751,19 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
               <div className="tw:mb-4 tw:text-base tw:font-semibold tw:text-ink-1">{viewerName}</div>
               <dl className="tw:grid tw:grid-cols-[auto_1fr] tw:gap-x-4 tw:gap-y-2 tw:text-sm">
                 <dt className="tw:text-ink-muted">{t("contentViewer.metadata.type")}</dt>
-                <dd>{t(`contentViewer.metadata.${documentKind}`)}</dd>
+                <dd>{t(unsupportedTextEncoding
+                  ? "contentViewer.metadata.unsupportedTextEncoding"
+                  : `contentViewer.metadata.${documentKind}`)}</dd>
                 <dt className="tw:text-ink-muted">MIME</dt>
-                <dd className="tw:break-all">{workspaceFileResponse?.mimeType || (target.type === "resource" ? target.mimeType : "") || "application/octet-stream"}</dd>
+                <dd className="tw:break-all">{workspaceFileResponse?.mimeType || resourceMimeType || (target.type === "resource" ? target.mimeType : "") || "application/octet-stream"}</dd>
                 <dt className="tw:text-ink-muted">{t("contentViewer.metadata.size")}</dt>
-                <dd>{workspaceFileResponse?.sizeBytes ?? (target.type === "resource" ? target.sizeBytes : undefined) ?? "–"}</dd>
+                <dd>{workspaceFileResponse?.sizeBytes ?? resourceSizeBytes ?? (target.type === "resource" ? target.sizeBytes : undefined) ?? "–"}</dd>
               </dl>
+              {unsupportedTextEncoding ? (
+                <p className="tw:mt-4 tw:text-sm tw:text-ink-muted">
+                  {t("contentViewer.metadata.unsupportedTextEncodingDetail")}
+                </p>
+              ) : null}
               <Button className="tw:mt-5" type="primary" onClick={() => void handleDownload()}>
                 {t("contentViewer.action.download")}
               </Button>
@@ -786,6 +807,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
               revision={documentRevision}
               onAnnotationCountChange={setDocumentAnnotationCount}
               onChange={setTextContent}
+              onReload={handleDocumentReload}
               onSave={(mode) => void handleDocumentSave(mode)}
             />
           ) : htmlReview.srcDoc !== null ? (
@@ -827,6 +849,7 @@ export const ContentViewerPanel: React.FC<ContentViewerPanelProps> = ({
               revision={documentRevision}
               onAnnotationCountChange={setDocumentAnnotationCount}
               onChange={setTextContent}
+              onReload={handleDocumentReload}
               onSave={(mode) => void handleDocumentSave(mode)}
             />
           ) : targetLine || showLineNumbers ? (

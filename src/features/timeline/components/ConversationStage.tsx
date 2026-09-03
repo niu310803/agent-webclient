@@ -49,7 +49,6 @@ import {
 } from "antd";
 import type { InputRef } from "antd";
 import {
-  AIRunEventTypeEnum,
   type Agent,
   type ConversationSurfaceMode,
   type TimelineNode,
@@ -734,7 +733,10 @@ function buildVirtualItemsDataSignature(
 }
 
 function readRootFontSize(): string {
-  if (typeof document === "undefined" || typeof getComputedStyle !== "function") {
+  if (
+    typeof document === "undefined" ||
+    typeof getComputedStyle !== "function"
+  ) {
     return "";
   }
   return getComputedStyle(document.documentElement).fontSize;
@@ -814,10 +816,18 @@ function ConversationTransitionOverlay({
           className={CONVERSATION_TRANSITION_SKELETON_CLASS_NAME}
           aria-hidden="true"
         >
-          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-2/3`} />
-          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-5/6`} />
-          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-3/4`} />
-          <div className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-1/2`} />
+          <div
+            className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-2/3`}
+          />
+          <div
+            className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-5/6`}
+          />
+          <div
+            className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-3/4`}
+          />
+          <div
+            className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-1/2`}
+          />
         </div>
       )}
     </div>
@@ -906,7 +916,12 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       // 传入活跃 run 标记，避免流式期间的节点全部退化为 standalone
       { hasActiveRun: Boolean(state.currentChatActiveRun) },
     );
-  }, [timelineEntries, state.events, state.taskItemsById, state.currentChatActiveRun]);
+  }, [
+    timelineEntries,
+    state.events,
+    state.taskItemsById,
+    state.currentChatActiveRun,
+  ]);
 
   const runStartedAt = useMemo(() => {
     if (!isMainChatRunning && !state.streaming) return null;
@@ -991,9 +1006,9 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   const transition = state.chatTransition;
   const transitionPending = Boolean(
     transition &&
-      (transition.phase === "loading" ||
-        transition.phase === "applying" ||
-        transition.phase === "restoring"),
+    (transition.phase === "loading" ||
+      transition.phase === "applying" ||
+      transition.phase === "restoring"),
   );
   const normalizedExpectedChatId = String(expectedChatId || "").trim();
   const routeTargetMismatch = Boolean(
@@ -1206,8 +1221,8 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   ]);
   const matchingSnapshot = Boolean(
     currentBookmark?.snapshot &&
-      currentBookmark.dataSignature === dataSignature &&
-      currentBookmark.layoutSignature === layoutSignature,
+    currentBookmark.dataSignature === dataSignature &&
+    currentBookmark.layoutSignature === layoutSignature,
   )
     ? currentBookmark?.snapshot
     : undefined;
@@ -1530,7 +1545,13 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     } else {
       commit();
     }
-  }, [dataSignature, layoutSignature, state.chatId, surfaceMode, virtualItemKeys]);
+  }, [
+    dataSignature,
+    layoutSignature,
+    state.chatId,
+    surfaceMode,
+    virtualItemKeys,
+  ]);
 
   const captureCurrentBookmarkRef = useRef(captureCurrentBookmark);
   captureCurrentBookmarkRef.current = captureCurrentBookmark;
@@ -1697,8 +1718,8 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       const latest = appContext?.stateRef.current.chatTransition;
       return Boolean(
         latest &&
-          latest.seq === transition.seq &&
-          latest.targetChatId === transition.targetChatId,
+        latest.seq === transition.seq &&
+        latest.targetChatId === transition.targetChatId,
       );
     };
     if (!isStillCurrent()) {

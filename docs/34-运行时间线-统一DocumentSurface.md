@@ -14,6 +14,8 @@ Standalone 全部由 WebClient 承载。Desktop 模式先用 canonical `openDocu
 
 WebClient 不解析 revision，也不把临时扩展名分类当成最终事实。读取链路返回的 MIME、内容类型与 revision 会覆盖 provisional 分类；保存统一进入 Platform `document.commit`，`revision_conflict` 必须向用户显示重载或另存选择。
 
+Resource metadata 缺少权威 kind header 时视为旧 Platform，不把“缺字段”解释成 binary，继续保留按语义文件名得到的 provisional 分类。权威 kind 为 binary 且语义文件名是已知文本扩展名时不进入编辑器，显示“文本编码不受支持”及下载入口；metadata 同时消费 `Content-Length` 展示准确大小。
+
 ## 内容能力
 
 - Markdown、文本和代码使用 Monaco。Markdown 提供源码、净化预览和分屏，不执行 MDX 或内联 HTML 脚本。
@@ -21,6 +23,8 @@ WebClient 不解析 revision，也不把临时扩展名分类当成最终事实�
 - PDF 使用本地 PDF.js 只读 Viewer，支持页码、缩放与搜索。
 - Office 可预览时只读预览，否则显示元信息和显式操作。音视频使用媒体播放器。压缩包和未知二进制不读为文本，也不自动下载。
 - Standalone HTML 提供源码和 sandbox 预览；Standalone 图片对 PNG/JPEG/WebP 提供基础 Canvas 编辑和区域批注，其他格式保持只读。
+
+文档内容区不复用浏览器地址栏。文件名只显示在 WorkPanel Tab；Markdown 工具栏包含源码/预览/分屏、批注和保存，文本/代码只包含批注和保存。重新加载权威 revision 位于同一行的更多菜单，存在 dirty 修改时先确认丢弃。普通 Web、WebApp 与 loopback 实时网站仍保留刷新和地址栏。
 
 Document Surface 向 Desktop 宿主只提交当前可信 WorkPanel item 的 dirty、busy、annotation count 与“交给智能体”动作。Standalone 直接写入当前 Composer；Desktop 由宿主校验 owner Chat 和 item 后追加 Composer 草稿，不覆盖也不自动发送。
 

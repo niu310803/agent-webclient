@@ -23,6 +23,7 @@ import {
   buildResourceUrl,
   classifyResourceUrl,
   getResourceBlob,
+	getResourceDocumentMetadata,
   getResourceText,
   isLegacyResourceUrl,
   isChatScopeResourceRef,
@@ -962,6 +963,51 @@ describe('data client query payloads', () => {
       '/api/admin/source?type=skill&key=demo+skill&path=references%2Fa+%26+b.md',
     );
   });
+
+	it('reads authoritative resource document metadata and size from HEAD', async () => {
+		fetchMock.mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			headers: new Headers({
+				'Content-Type': 'text/markdown; charset=utf-8',
+				'Content-Length': '128',
+				'X-ZenMind-Document-Kind': 'document-markdown',
+				'X-ZenMind-Resource-Revision': '128:42',
+			}),
+		});
+
+		await expect(getResourceDocumentMetadata('artifacts/run_1/novel.md', {
+			chatId: 'chat_1',
+		})).resolves.toEqual({
+			documentKind: 'document-markdown',
+			mimeType: 'text/markdown',
+			revision: '128:42',
+			sizeBytes: 128,
+		});
+		expect(fetchMock).toHaveBeenCalledWith(
+			expect.stringContaining('/api/resource?'),
+			expect.objectContaining({ method: 'HEAD' }),
+		);
+	});
+
+	it('keeps documentKind absent for an older Platform response', async () => {
+		fetchMock.mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			headers: new Headers({
+				'Content-Type': 'application/octet-stream',
+				'Content-Length': '12',
+			}),
+		});
+
+		await expect(getResourceDocumentMetadata('artifacts/run_1/novel.md', {
+			chatId: 'chat_1',
+		})).resolves.toEqual({
+			mimeType: 'application/octet-stream',
+			revision: '',
+			sizeBytes: 12,
+		});
+	});
 
   it('fetches skill icons with bearer authentication', async () => {
     setAccessToken('skill-icon-token');

@@ -161,6 +161,13 @@ function getFileExtension(name?: string): string {
   return normalizedName.slice(lastDotIndex + 1).toLowerCase();
 }
 
+export function isKnownTextDocumentName(name?: string): boolean {
+  const extension = getFileExtension(name);
+  return markdownExtensions.has(extension) ||
+    textExtensions.has(extension) ||
+    codeExtensions.has(extension);
+}
+
 function displayFileName(path: string): string {
   const normalized = path.replace(/\\/g, "/");
   return normalized.split("/").filter(Boolean).pop() || path;

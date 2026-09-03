@@ -57,6 +57,27 @@ describe("ContentViewerPanel", () => {
 		expect(html).toMatch(/下\s*载/u);
 	});
 
+	it("explains unsafe Markdown as an unsupported text encoding", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(ContentViewerPanel, {
+				target: {
+					type: "resource",
+					name: "novel.md",
+					url: "artifacts/run_1/novel.md",
+					downloadUrl: "artifacts/run_1/novel.md",
+					contentKind: "unsupported",
+					documentKind: "document-binary",
+					mimeType: "application/octet-stream",
+				},
+			}),
+		);
+
+		expect(html).toContain("文本编码不受支持（只读）");
+		expect(html).toContain("不是安全的 UTF-8 文本");
+		expect(html).not.toContain("二进制文件（只读）");
+		expect(html).toMatch(/下\s*载/u);
+	});
+
 	it("renders the Desktop local action controls inside the viewer content area", () => {
 		const html = renderToStaticMarkup(
 			React.createElement(DesktopLocalResourceActions, {

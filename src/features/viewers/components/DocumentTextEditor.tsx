@@ -1,7 +1,8 @@
 import React from "react";
-import { Button, Input, Space } from "antd";
+import { Button, Dropdown, Input, Space } from "antd";
 import type * as MonacoTypes from "monaco-editor";
 import { CodeEditor } from "@/shared/ui/CodeEditor";
+import { MaterialIcon } from "@/shared/ui/MaterialIcon";
 import { t } from "@/shared/i18n";
 import type { DocumentContentKind } from "@/shared/types/document";
 import {
@@ -76,6 +77,7 @@ export const DocumentTextEditor: React.FC<{
   revision: string;
   onAnnotationCountChange?: (count: number) => void;
   onChange: (value: string) => void;
+  onReload: () => void;
   onSave: (mode: "overwrite" | "new-artifact") => void;
 }> = ({
   value,
@@ -91,6 +93,7 @@ export const DocumentTextEditor: React.FC<{
   revision,
   onAnnotationCountChange,
   onChange,
+  onReload,
   onSave,
 }) => {
   const markdown = kind === "document-markdown";
@@ -264,6 +267,25 @@ export const DocumentTextEditor: React.FC<{
                 : t("contentViewer.action.save")}
             </Button>
           ) : null}
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: [{
+                key: "reload",
+                label: t("contentViewer.action.reload"),
+                disabled: saving,
+                onClick: onReload,
+              }],
+            }}
+          >
+            <Button
+              size="small"
+              type="text"
+              icon={<MaterialIcon name="more_horiz" />}
+              aria-label={t("contentViewer.action.more")}
+              title={t("contentViewer.action.more")}
+            />
+          </Dropdown>
         </Space>
       </div>
       {mode === "source" ? editor : null}

@@ -3,6 +3,7 @@ import {
 	buildResourceViewerTargetFromUrl,
 	detectDocumentContentKind,
 	detectViewerContentKind,
+	isKnownTextDocumentName,
 	isViewerContentSupported,
 } from "@/features/viewers/lib/viewerTarget";
 
@@ -175,5 +176,14 @@ describe("viewerTarget", () => {
 				sizeBytes: 4096,
 			})?.sizeBytes,
 		).toBe(4096);
+	});
+
+	it("recognizes names that should report unsupported text encoding", () => {
+		expect(isKnownTextDocumentName("novel.md")).toBe(true);
+		expect(isKnownTextDocumentName("README.markdown")).toBe(true);
+		expect(isKnownTextDocumentName("page.mdx")).toBe(true);
+		expect(isKnownTextDocumentName("server.log")).toBe(true);
+		expect(isKnownTextDocumentName("main.ts")).toBe(true);
+		expect(isKnownTextDocumentName("manual.pdf")).toBe(false);
 	});
 });
