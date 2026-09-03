@@ -155,9 +155,25 @@ const CONVERSATION_TRANSITION_OVERLAY_REDUCED_MOTION_HOLD_MS =
 const CONVERSATION_TRANSITION_REDUCED_MOTION_QUERY =
   "(prefers-reduced-motion: reduce)";
 const CONVERSATION_TRANSITION_SKELETON_CLASS_NAME =
-  "conversation-transition-skeleton tw:flex tw:w-full tw:max-w-[760px] tw:flex-col tw:gap-5";
-const CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME =
-  "tw:h-16 tw:animate-pulse tw:rounded-xl tw:bg-[color-mix(in_srgb,var(--line-soft)_58%,transparent)]";
+  "conversation-transition-skeleton";
+const CONVERSATION_TRANSITION_SKELETON_BLOCK_CLASS_NAME =
+  "conversation-transition-skeleton-block";
+const CONVERSATION_TRANSITION_SKELETON_QUERY_BLOCK_CLASS_NAME =
+  "conversation-transition-skeleton-block is-query";
+const CONVERSATION_TRANSITION_SKELETON_RUN_BLOCK_CLASS_NAME =
+  "conversation-transition-skeleton-block is-run";
+const CONVERSATION_TRANSITION_SKELETON_CAPTION_CLASS_NAME =
+  "conversation-transition-skeleton-caption";
+const CONVERSATION_TRANSITION_SKELETON_LINE_CLASS_NAME =
+  "conversation-transition-skeleton-line";
+const CONVERSATION_TRANSITION_SKELETON_SMALL_LINE_CLASS_NAME =
+  "conversation-transition-skeleton-line is-small";
+const CONVERSATION_TRANSITION_SKELETON_QUERY_PILL_CLASS_NAME =
+  "conversation-transition-skeleton-query-pill";
+const CONVERSATION_TRANSITION_SKELETON_DOT_CLASS_NAME =
+  "conversation-transition-skeleton-dot";
+const CONVERSATION_TRANSITION_SKELETON_CARD_CLASS_NAME =
+  "conversation-transition-skeleton-card";
 const CONVERSATION_TRANSITION_ERROR_CLASS_NAME =
   "conversation-transition-error tw:flex tw:max-w-[420px] tw:flex-col tw:items-center tw:gap-3 tw:text-center";
 const TIMELINE_STACK_CLASS_NAME =
@@ -821,17 +837,91 @@ function ConversationTransitionOverlay({
           aria-hidden="true"
         >
           <div
-            className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-2/3`}
-          />
+            className={CONVERSATION_TRANSITION_SKELETON_QUERY_BLOCK_CLASS_NAME}
+          >
+            <div
+              className={CONVERSATION_TRANSITION_SKELETON_QUERY_PILL_CLASS_NAME}
+            />
+            <div
+              className={`${CONVERSATION_TRANSITION_SKELETON_SMALL_LINE_CLASS_NAME} tw:w-24 tw:mr-[10px]`}
+            />
+          </div>
+          <div className={CONVERSATION_TRANSITION_SKELETON_BLOCK_CLASS_NAME}>
+            <div
+              className={CONVERSATION_TRANSITION_SKELETON_CAPTION_CLASS_NAME}
+            >
+              <span
+                className={CONVERSATION_TRANSITION_SKELETON_DOT_CLASS_NAME}
+              />
+              <span
+                className={`${CONVERSATION_TRANSITION_SKELETON_LINE_CLASS_NAME} tw:w-20`}
+              />
+            </div>
+          </div>
           <div
-            className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-5/6`}
-          />
+            className={CONVERSATION_TRANSITION_SKELETON_RUN_BLOCK_CLASS_NAME}
+          >
+            <div className={CONVERSATION_TRANSITION_SKELETON_CARD_CLASS_NAME}>
+              <div
+                className={`${CONVERSATION_TRANSITION_SKELETON_SMALL_LINE_CLASS_NAME} tw:w-[38%]`}
+              />
+              <div
+                className={`${CONVERSATION_TRANSITION_SKELETON_SMALL_LINE_CLASS_NAME} tw:w-[56%]`}
+              />
+              <div
+                className={`${CONVERSATION_TRANSITION_SKELETON_SMALL_LINE_CLASS_NAME} tw:w-[48%]`}
+              />
+            </div>
+          </div>
+          <div className={CONVERSATION_TRANSITION_SKELETON_BLOCK_CLASS_NAME}>
+            <div
+              className={CONVERSATION_TRANSITION_SKELETON_CAPTION_CLASS_NAME}
+            >
+              <span
+                className={`${CONVERSATION_TRANSITION_SKELETON_DOT_CLASS_NAME} dot-blue`}
+              />
+              <span
+                className={`${CONVERSATION_TRANSITION_SKELETON_LINE_CLASS_NAME} tw:w-20`}
+              />
+            </div>
+          </div>
           <div
-            className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:w-3/4`}
-          />
+            className={CONVERSATION_TRANSITION_SKELETON_RUN_BLOCK_CLASS_NAME}
+          >
+            <div
+              className={`${CONVERSATION_TRANSITION_SKELETON_CARD_CLASS_NAME} tw:h-[70px]`}
+            />
+            <div
+              className={`${CONVERSATION_TRANSITION_SKELETON_CARD_CLASS_NAME} tw:h-[70px]`}
+            />
+          </div>
+
+          <div className={CONVERSATION_TRANSITION_SKELETON_BLOCK_CLASS_NAME}>
+            <div
+              className={CONVERSATION_TRANSITION_SKELETON_CAPTION_CLASS_NAME}
+            >
+              <span
+                className={`${CONVERSATION_TRANSITION_SKELETON_DOT_CLASS_NAME} dot-green`}
+              />
+              <span
+                className={`${CONVERSATION_TRANSITION_SKELETON_LINE_CLASS_NAME} tw:w-[70%]`}
+              />
+            </div>
+          </div>
+
           <div
-            className={`${CONVERSATION_TRANSITION_SKELETON_ROW_CLASS_NAME} tw:ml-auto tw:w-1/2`}
-          />
+            className={CONVERSATION_TRANSITION_SKELETON_RUN_BLOCK_CLASS_NAME}
+          >
+            <span
+              className={`${CONVERSATION_TRANSITION_SKELETON_LINE_CLASS_NAME} tw:w-[90%]`}
+            />
+            <span
+              className={`${CONVERSATION_TRANSITION_SKELETON_LINE_CLASS_NAME} tw:w-[80%]`}
+            />
+            <span
+              className={`${CONVERSATION_TRANSITION_SKELETON_LINE_CLASS_NAME} tw:w-[40%]`}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -1024,21 +1114,18 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   ).trim();
   const liveQueryOwnsOverlayTarget = Boolean(
     mainChatRuntime &&
-      overlayTargetChatId &&
-      isMainChatRuntimeObservedByLiveQuery(
-        mainChatRuntime,
-        overlayTargetChatId,
-      ),
+    overlayTargetChatId &&
+    isMainChatRuntimeObservedByLiveQuery(mainChatRuntime, overlayTargetChatId),
   );
   const liveQueryTakesDisplayPriority = Boolean(
     liveQueryOwnsOverlayTarget && transition?.kind !== "same-chat-reload",
   );
   const backgroundTransitionOwnsDisplayedChat = Boolean(
     transition?.displayMode === "background" &&
-      transition.targetChatId &&
-      transition.targetChatId === state.chatId &&
-      (!normalizedExpectedChatId ||
-        transition.targetChatId === normalizedExpectedChatId),
+    transition.targetChatId &&
+    transition.targetChatId === state.chatId &&
+    (!normalizedExpectedChatId ||
+      transition.targetChatId === normalizedExpectedChatId),
   );
   const transitionError = transition?.phase === "error" ? transition.error : "";
   const transitionOverlayVisible =
@@ -1051,14 +1138,12 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     : `route:${normalizedExpectedChatId}`;
   const transitionOverlayImmediateDismiss = Boolean(
     !transitionError &&
-      (liveQueryTakesDisplayPriority ||
-        backgroundTransitionOwnsDisplayedChat ||
-        !overlayTargetChatId),
+    (liveQueryTakesDisplayPriority ||
+      backgroundTransitionOwnsDisplayedChat ||
+      !overlayTargetChatId),
   );
   const [transitionOverlayPresentation, setTransitionOverlayPresentation] =
-    useState<{ identity: string; phase: "visible" | "exiting" } | null>(
-      null,
-    );
+    useState<{ identity: string; phase: "visible" | "exiting" } | null>(null);
   const transitionOverlayIdentityRef = useRef("");
   const transitionOverlayShownAtRef = useRef(0);
   const transitionOverlayHoldTimerRef = useRef<number | null>(null);
@@ -1124,9 +1209,7 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
 
     if (transitionOverlayVisible) {
       clearTransitionOverlayTimers();
-      if (
-        transitionOverlayIdentityRef.current !== transitionOverlayIdentity
-      ) {
+      if (transitionOverlayIdentityRef.current !== transitionOverlayIdentity) {
         transitionOverlayIdentityRef.current = transitionOverlayIdentity;
         transitionOverlayShownAtRef.current = window.performance.now();
       }
