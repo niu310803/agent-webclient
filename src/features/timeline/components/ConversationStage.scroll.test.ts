@@ -694,6 +694,11 @@ describe("ConversationStage scroll restoration", () => {
       targetChatId: "chat-target",
       phase: "ready",
     });
+    act(() => jest.advanceTimersByTime(2_000));
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "APPEND_DEBUG",
+      line: expect.stringContaining("chat-scroll-restore-timeout"),
+    }));
     expect(focusListener).toHaveBeenCalledTimes(1);
     window.removeEventListener("agent:focus-composer", focusListener);
   });
@@ -732,9 +737,38 @@ describe("ConversationStage scroll restoration", () => {
 
     act(() => mockVirtuosoProps.atBottomStateChange(false));
     expect(mockVirtuosoProps.followOutput(true)).toBe(false);
+    act(() => jest.advanceTimersByTime(2_000));
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "APPEND_DEBUG",
+      line: expect.stringContaining("chat-scroll-restore-timeout"),
+    }));
   });
 
-  it("keeps a history skeleton until the bottom position is stable", () => {
+  it("marks an empty timeline ready without producing a timeout diagnostic", () => {
+    const transition = createTransition("restoring");
+    mockState = createChatState(transition);
+    mockState = {
+      ...mockState,
+      timelineNodes: new Map(),
+      timelineOrder: [],
+    };
+    mockStateRef.current = mockState;
+    renderStage();
+
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "ADVANCE_CHAT_TRANSITION",
+      seq: 1,
+      targetChatId: "chat-target",
+      phase: "ready",
+    });
+    act(() => jest.advanceTimersByTime(2_000));
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "APPEND_DEBUG",
+      line: expect.stringContaining("chat-scroll-restore-timeout"),
+    }));
+  });
+
+  it("times out a history skeleton when the bottom position never stabilizes", () => {
     autoFlushAnimationFrames = false;
     const transition = createTransition("restoring");
     mockState = createChatState(transition);
@@ -775,14 +809,62 @@ describe("ConversationStage scroll restoration", () => {
       phase: "ready",
     }));
     expect(container.querySelector(".conversation-transition-overlay")).not.toBeNull();
-    act(() => jest.advanceTimersByTime(10_000));
+    act(() => jest.advanceTimersByTime(1_999));
     expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
       type: "ADVANCE_CHAT_TRANSITION",
       phase: "ready",
     }));
     expect(container.querySelector(".conversation-transition-overlay")).not.toBeNull();
+    act(() => jest.advanceTimersByTime(1));
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "APPEND_DEBUG",
+      line: "[chat-scroll-restore-timeout] chatId=chat-target transitionSeq=1 mode=bottom targetIndex=0 targetKey=query_query-1 scrollTop=0 remainingErrorPx=700 elapsedMs=2000",
+    });
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "ADVANCE_CHAT_TRANSITION",
+      seq: 1,
+      targetChatId: "chat-target",
+      phase: "ready",
+    });
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "ADVANCE_CHAT_TRANSITION",
+      phase: "error",
+    }));
+    expect(mockDispatch.mock.calls.filter(([action]) =>
+      action.type === "ADVANCE_CHAT_TRANSITION" &&
+      action.seq === 1 &&
+      action.targetChatId === "chat-target" &&
+      action.phase === "ready"
+    )).toHaveLength(1);
+    mockState = createChatState(createTransition("ready"));
+    mockStateRef.current = mockState;
+    renderStage();
+    expect(
+      container.querySelector<HTMLElement>(".conversation-transition-overlay")
+        ?.dataset.transitionPhase,
+    ).toBe("exiting");
+    act(() => jest.advanceTimersByTime(80));
+    expect(container.querySelector(".conversation-transition-overlay")).toBeNull();
+  });
 
-    scrollTop = 700;
+  it("re-enters the same restoration after dependency cleanup and completes when stable", () => {
+    autoFlushAnimationFrames = false;
+    const transition = createTransition("restoring");
+    mockState = createChatState(transition);
+    mockStateRef.current = mockState;
+    renderStage();
+
+    const changedNode = {
+      ...mockState.timelineNodes.get("query-1")!,
+      text: "hello after replay projection update",
+    };
+    mockState = {
+      ...mockState,
+      timelineNodes: new Map([[changedNode.id, changedNode]]),
+    };
+    mockStateRef.current = mockState;
+    renderStage();
+
     act(() => flushAnimationFrame());
     expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
       type: "ADVANCE_CHAT_TRANSITION",
@@ -795,15 +877,132 @@ describe("ConversationStage scroll restoration", () => {
       targetChatId: "chat-target",
       phase: "ready",
     });
-    mockState = createChatState(createTransition("ready"));
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "APPEND_DEBUG",
+      line: expect.stringContaining("chat-scroll-restore-timeout"),
+    }));
+  });
+
+  it("does not restart the 2000ms deadline when restoration dependencies keep changing", () => {
+    autoFlushAnimationFrames = false;
+    const transition = createTransition("restoring");
+    mockState = createChatState(transition);
     mockStateRef.current = mockState;
     renderStage();
-    expect(
-      container.querySelector<HTMLElement>(".conversation-transition-overlay")
-        ?.dataset.transitionPhase,
-    ).toBe("exiting");
-    act(() => jest.advanceTimersByTime(80));
-    expect(container.querySelector(".conversation-transition-overlay")).toBeNull();
+    const scroller = container.querySelector<HTMLElement>("#messages");
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 300 },
+      scrollHeight: { configurable: true, get: () => 1_000 },
+      scrollTop: { configurable: true, get: () => 0 },
+    });
+
+    act(() => jest.advanceTimersByTime(700));
+    const changedNode = {
+      ...mockState.timelineNodes.get("query-1")!,
+      text: "first dependency update",
+    };
+    mockState = {
+      ...mockState,
+      timelineNodes: new Map([[changedNode.id, changedNode]]),
+    };
+    mockStateRef.current = mockState;
+    renderStage();
+
+    act(() => jest.advanceTimersByTime(700));
+    mockState = {
+      ...mockState,
+      themeMode: mockState.themeMode === "dark" ? "light" : "dark",
+    };
+    mockStateRef.current = mockState;
+    renderStage();
+
+    act(() => jest.advanceTimersByTime(599));
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "ADVANCE_CHAT_TRANSITION",
+      phase: "ready",
+    }));
+    act(() => jest.advanceTimersByTime(1));
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "APPEND_DEBUG",
+      line: "[chat-scroll-restore-timeout] chatId=chat-target transitionSeq=1 mode=bottom targetIndex=0 targetKey=query_query-1 scrollTop=0 remainingErrorPx=700 elapsedMs=2000",
+    });
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "ADVANCE_CHAT_TRANSITION",
+      seq: 1,
+      targetChatId: "chat-target",
+      phase: "ready",
+    });
+  });
+
+  it("keeps only the remaining millisecond when cleanup happens at 1999ms", () => {
+    autoFlushAnimationFrames = false;
+    const transition = createTransition("restoring");
+    mockState = createChatState(transition);
+    mockStateRef.current = mockState;
+    renderStage();
+    const scroller = container.querySelector<HTMLElement>("#messages");
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 300 },
+      scrollHeight: { configurable: true, get: () => 1_000 },
+      scrollTop: { configurable: true, get: () => 0 },
+    });
+
+    act(() => jest.advanceTimersByTime(1_999));
+    const changedNode = {
+      ...mockState.timelineNodes.get("query-1")!,
+      text: "dependency update at the deadline",
+    };
+    mockState = {
+      ...mockState,
+      timelineNodes: new Map([[changedNode.id, changedNode]]),
+    };
+    mockStateRef.current = mockState;
+    renderStage();
+
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "ADVANCE_CHAT_TRANSITION",
+      phase: "ready",
+    }));
+    act(() => jest.advanceTimersByTime(1));
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "APPEND_DEBUG",
+      line: "[chat-scroll-restore-timeout] chatId=chat-target transitionSeq=1 mode=bottom targetIndex=0 targetKey=query_query-1 scrollTop=0 remainingErrorPx=700 elapsedMs=2000",
+    });
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: "ADVANCE_CHAT_TRANSITION",
+      seq: 1,
+      targetChatId: "chat-target",
+      phase: "ready",
+    });
+  });
+
+  it("completes once when the timeout races a pending second stable frame", () => {
+    autoFlushAnimationFrames = false;
+    const transition = createTransition("restoring");
+    mockState = createChatState(transition);
+    mockStateRef.current = mockState;
+    renderStage();
+    const scroller = container.querySelector<HTMLElement>("#messages");
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 300 },
+      scrollHeight: { configurable: true, get: () => 1_000 },
+      scrollTop: { configurable: true, get: () => 700 },
+    });
+
+    act(() => flushAnimationFrame());
+    const pendingFrame = animationFrameCallbacks.entries().next().value as
+      | [number, FrameRequestCallback]
+      | undefined;
+    expect(pendingFrame).toBeDefined();
+    act(() => jest.advanceTimersByTime(2_000));
+    act(() => pendingFrame?.[1](2_000));
+
+    expect(mockDispatch.mock.calls.filter(([action]) =>
+      action.type === "ADVANCE_CHAT_TRANSITION" &&
+      action.seq === 1 &&
+      action.targetChatId === "chat-target" &&
+      action.phase === "ready"
+    )).toHaveLength(1);
   });
 
   it("falls back to the final item when the bookmark signature is stale", () => {
@@ -858,6 +1057,7 @@ describe("ConversationStage scroll restoration", () => {
 
     act(() => flushAnimationFrame());
     act(() => flushAnimationFrame());
+    act(() => jest.advanceTimersByTime(2_000));
 
     expect(mockDispatch).not.toHaveBeenCalledWith({
       type: "ADVANCE_CHAT_TRANSITION",
