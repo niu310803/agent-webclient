@@ -15,9 +15,10 @@ import {
 
 jest.mock("./index.module.css", () => ({ Collapse: "Collapse" }));
 jest.mock("./highlight-theme.css", () => ({}));
-jest.mock("highlight.js", () => ({
+jest.mock("highlight.js/lib/core", () => ({
   getLanguage: () => undefined,
   highlight: (code: string) => ({ value: code }),
+  registerLanguage: jest.fn(),
 }));
 
 jest.mock("@/app/state/AppContext", () => ({
