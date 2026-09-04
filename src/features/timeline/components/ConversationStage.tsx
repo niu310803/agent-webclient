@@ -76,8 +76,11 @@ import {
   setConversationScrollBookmark,
   type ConversationScrollBookmark,
 } from "@/features/timeline/lib/conversationScrollBookmark";
+import type { AgentSkill } from "@/shared/data/api/client";
+import { useAgentSkillsQuery } from "@/shared/data/query/queries";
 
 type CurrentWorkerSummary = ReturnType<typeof resolveCurrentWorkerSummary>;
+const EMPTY_AGENT_SKILLS: readonly AgentSkill[] = [];
 
 type VirtualListItem =
   | {
@@ -943,6 +946,18 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
       .map((id) => state.timelineNodes.get(id))
       .filter((node): node is NonNullable<typeof node> => Boolean(node));
   }, [state.timelineOrder, state.timelineNodes]);
+  const currentAgentKey =
+    currentWorker?.type === "agent"
+      ? String(currentWorker.sourceId || "").trim()
+      : "";
+  const hasRequiredSkills = useMemo(
+    () => timelineEntries.some((node) => Boolean(node.mustUseSkills?.length)),
+    [timelineEntries],
+  );
+  const skillCatalogQuery = useAgentSkillsQuery(currentAgentKey, {
+    enabled: Boolean(currentAgentKey && hasRequiredSkills),
+  });
+  const activeAgentSkills = skillCatalogQuery.data?.skills ?? EMPTY_AGENT_SKILLS;
   const displayItems = useMemo(() => {
     return buildTimelineDisplayItems(
       timelineEntries,
@@ -1436,6 +1451,7 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
         key={entry.key}
         entry={entry}
         agents={state.agents}
+        skills={activeAgentSkills}
         fallbackAgentKey={
           currentWorker?.type === "agent" ? currentWorker.sourceId : ""
         }
@@ -1445,6 +1461,7 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
     ),
     [
       currentWorker,
+      activeAgentSkills,
       expandedTaskGroups,
       state.agents,
       toggleTaskGroup,
@@ -2113,6 +2130,7 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
                 >
                   <TimelineRow
                     node={item.node}
+                    skills={activeAgentSkills}
                     metaNode={
                       <div className={TIMELINE_META_ROW_CLASS_NAME}>
                         <div className={TIMELINE_META_ACTIONS_CLASS_NAME}>

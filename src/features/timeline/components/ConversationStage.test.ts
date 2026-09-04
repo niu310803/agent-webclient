@@ -28,6 +28,10 @@ let mockCurrentWorker: {
   row: WorkerRow;
   relatedChats: WorkerConversationRow[];
 } | null = null;
+const mockUseAgentSkillsQuery = jest.fn(() => ({
+  data: null,
+  status: "idle",
+}));
 
 jest.mock("@/app/state/AppContext", () => {
   const actual = jest.requireActual("@/app/state/AppContext");
@@ -40,6 +44,10 @@ jest.mock("@/app/state/AppContext", () => {
 
 jest.mock("@/features/workers/lib/currentWorker", () => ({
   resolveCurrentWorkerSummary: () => mockCurrentWorker,
+}));
+
+jest.mock("@/shared/data/query/queries", () => ({
+  useAgentSkillsQuery: (...args: unknown[]) => mockUseAgentSkillsQuery(...args),
 }));
 
 jest.mock("react-virtuoso", () => {
@@ -165,6 +173,8 @@ describe("ConversationStage", () => {
 
   beforeEach(() => {
     mockCurrentWorker = null;
+    mockUseAgentSkillsQuery.mockReset();
+    mockUseAgentSkillsQuery.mockReturnValue({ data: null, status: "idle" });
     globalWithStorage.window = {
       dispatchEvent: jest.fn(() => true),
       location: {
