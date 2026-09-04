@@ -37,57 +37,6 @@ jest.mock("@/shared/i18n", () => ({
   I18nProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-jest.mock("./pages/automations", () => ({
-  AutomationsPage: () => null,
-}));
-
-jest.mock("./pages/memory", () => ({
-  MemoryPage: () => null,
-}));
-
-jest.mock("./pages/agents", () => ({
-  AgentsPage: () => null,
-}));
-
-jest.mock("./pages/archives", () => ({
-  ArchivesPage: () => null,
-}));
-
-jest.mock("./pages/registries", () => ({
-  RegistriesPage: () => null,
-}));
-
-jest.mock("./pages/mcp-servers", () => ({
-  McpServersPage: () => null,
-}));
-
-jest.mock("./pages/skills", () => ({
-  SkillsPage: () => null,
-}));
-
-jest.mock("./pages/project", () => ({
-  ProjectPage: () => null,
-}));
-
-jest.mock("./pages/terminal", () => ({
-  TerminalPage: () => null,
-}));
-
-jest.mock("./pages/surfaces", () => ({
-  BtwViewerPage: () => null,
-  DebugViewerPage: () => null,
-  FileViewerPage: () => null,
-  OverviewViewerPage: () => null,
-  PlanningViewerPage: () => null,
-  ResourceViewerPage: () => null,
-  SourceViewerPage: () => null,
-  WebViewerPage: () => null,
-}));
-
-jest.mock("./pages/history", () => ({
-  HistoryPage: () => null,
-}));
-
 describe("App routing", () => {
   beforeEach(() => {
     jest.resetModules();

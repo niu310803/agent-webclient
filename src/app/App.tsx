@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { ConfigProvider, theme as antdTheme, App as AntdApp } from "antd";
+import { ConfigProvider, Spin, theme as antdTheme, App as AntdApp } from "antd";
 import {
   createBrowserRouter,
   useLocation,
@@ -29,14 +29,6 @@ import {
   syncThemeMode,
 } from "@/shared/styles/theme";
 import { APP_UI_BASE } from "@/shared/utils/routing";
-import { AutomationsPage } from "./pages/automations";
-import { MemoryPage } from "./pages/memory";
-import { AgentsPage } from "./pages/agents";
-import { ArchivesPage } from "./pages/archives";
-import { RegistriesPage } from "./pages/registries";
-import { McpServersPage } from "./pages/mcp-servers";
-import { SkillsPage } from "./pages/skills";
-import { ProjectPage } from "./pages/project";
 import { useDesktopRouteChange } from "@/shared/hooks/useDesktopRouteChange";
 import { BtwProvider } from "@/features/btw/components/BtwProvider";
 import { SURFACE_ROUTE_PATHS } from "@/features/surfaces/surfaceRoutes";
@@ -44,23 +36,40 @@ import zhCN from "antd/locale/zh_CN";
 import enUS from "antd/locale/en_US";
 import { GatewayAuthBoundary } from "@/shared/data/auth/GatewayAuthBoundary";
 import { LoginPage } from "./pages/login";
-import { TerminalPage } from "./pages/terminal";
-import {
-  BtwViewerPage,
-  DebugViewerPage,
-  FileViewerPage,
-  OverviewViewerPage,
-  PlanningViewerPage,
-  ResourceViewerPage,
-  SkillViewerPage,
-  SourceViewerPage,
-  WebViewerPage,
-} from "./pages/surfaces";
-import { HistoryPage } from "./pages/history";
 import { useStandaloneDesktopActionRuntime } from "@/features/conversation/hooks/useStandaloneWorkPanelActionRuntime";
 import { initializeDesktopContextMenuBridge } from "@/shared/data/desktop/desktopContextMenu";
 import { RealtimeTransportProvider } from "@/features/transport/components/RealtimeTransportProvider";
 import { WebClientRouteErrorPage } from "@/app/WebClientRenderError";
+
+// 管理台与独立 Surface 窗口页面全部按需加载，入口只保留登录页与对话壳层
+function lazyPage<T extends React.ComponentType<object>, M>(
+  factory: () => Promise<M>,
+  pick: (mod: M) => T,
+) {
+  return React.lazy(() => factory().then((mod) => ({ default: pick(mod) })));
+}
+
+const AutomationsPage = lazyPage(() => import("./pages/automations"), (m) => m.AutomationsPage);
+const MemoryPage = lazyPage(() => import("./pages/memory"), (m) => m.MemoryPage);
+const AgentsPage = lazyPage(() => import("./pages/agents"), (m) => m.AgentsPage);
+const ArchivesPage = lazyPage(() => import("./pages/archives"), (m) => m.ArchivesPage);
+const RegistriesPage = lazyPage(() => import("./pages/registries"), (m) => m.RegistriesPage);
+const McpServersPage = lazyPage(() => import("./pages/mcp-servers"), (m) => m.McpServersPage);
+const SkillsPage = lazyPage(() => import("./pages/skills"), (m) => m.SkillsPage);
+const ProjectPage = lazyPage(() => import("./pages/project"), (m) => m.ProjectPage);
+const TerminalPage = lazyPage(() => import("./pages/terminal"), (m) => m.TerminalPage);
+const HistoryPage = lazyPage(() => import("./pages/history"), (m) => m.HistoryPage);
+
+// Surface 页面按文件粒度动态引入；走 barrel（./pages/surfaces）会把 9 个页面合并成一个 chunk
+const BtwViewerPage = lazyPage(() => import("./pages/surfaces/BtwViewerPage"), (m) => m.BtwViewerPage);
+const DebugViewerPage = lazyPage(() => import("./pages/surfaces/DebugViewerPage"), (m) => m.DebugViewerPage);
+const FileViewerPage = lazyPage(() => import("./pages/surfaces/FileViewerPage"), (m) => m.FileViewerPage);
+const OverviewViewerPage = lazyPage(() => import("./pages/surfaces/OverviewViewerPage"), (m) => m.OverviewViewerPage);
+const PlanningViewerPage = lazyPage(() => import("./pages/surfaces/PlanningViewerPage"), (m) => m.PlanningViewerPage);
+const ResourceViewerPage = lazyPage(() => import("./pages/surfaces/ResourceViewerPage"), (m) => m.ResourceViewerPage);
+const SkillViewerPage = lazyPage(() => import("./pages/surfaces/SkillViewerPage"), (m) => m.SkillViewerPage);
+const SourceViewerPage = lazyPage(() => import("./pages/surfaces/SourceViewerPage"), (m) => m.SourceViewerPage);
+const WebViewerPage = lazyPage(() => import("./pages/surfaces/WebViewerPage"), (m) => m.WebViewerPage);
 
 const defaultDocumentTitle =
   typeof document === "undefined" ? "" : document.title;
@@ -161,7 +170,24 @@ const DocumentTitleRoute: React.FC<{
     document.title = titleKey ? t(titleKey) : title || defaultDocumentTitle;
   }, [t, title, titleKey]);
 
-  return <>{children}</>;
+  return (
+    <React.Suspense
+      fallback={
+        <div
+          style={{
+            minHeight: "100vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Spin size="large" />
+        </div>
+      }
+    >
+      {children}
+    </React.Suspense>
+  );
 };
 
 const ThemedShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
