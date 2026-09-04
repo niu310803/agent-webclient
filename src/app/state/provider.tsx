@@ -7,7 +7,7 @@ import React, {
 	useReducer,
 	useRef,
 } from "react";
-import { debounce } from "lodash";
+import debounce from "lodash/debounce";
 import type { AppAction } from "@/app/state/actions";
 import type { AppState } from "@/app/state/types";
 import { appReducer } from "@/app/state/reducer";

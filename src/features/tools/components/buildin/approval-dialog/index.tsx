@@ -29,7 +29,7 @@ import {
 import { useAwaitingTimeoutCountdown } from "@/features/tools/components/awaitingTimeout";
 import { useAwaitingResolutionNotice } from "@/features/tools/components/buildin/useAwaitingResolutionNotice";
 import { useI18n } from "@/shared/i18n";
-import { debounce } from "lodash";
+import debounce from "lodash/debounce";
 import { MaterialIcon } from "@/shared/ui/MaterialIcon";
 import { Pager } from "@/shared/ui/Pager";
 import {
