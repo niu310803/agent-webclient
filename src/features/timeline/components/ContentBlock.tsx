@@ -57,6 +57,7 @@ export const ContentBlock: React.FC<ContentBlockProps> = ({ node }) => {
 	const openTarget = useOpenTarget();
 	const state = useAppState();
 	const interaction = useTimelineInteraction();
+	const surfaceContext = interaction?.surfaceContext;
 	const voiceEnabled = isVoiceEnabled();
 	const text = node.text || "";
 	const streamingSafeText = stripPendingSpecialFenceTail(text);
@@ -68,8 +69,9 @@ export const ContentBlock: React.FC<ContentBlockProps> = ({ node }) => {
 		},
 	}), [node.id, text]);
 	const contextTargetRef = useDesktopContextMenuTarget<HTMLDivElement>(contextTarget);
-	const currentChat = state.chats.find((chat) => chat.chatId === state.chatId);
-	const teamChat = Boolean(
+	const chatId = String(surfaceContext?.chatId ?? state.chatId ?? "").trim();
+	const currentChat = state.chats.find((chat) => chat.chatId === chatId);
+	const teamChat = surfaceContext?.teamChat ?? Boolean(
 		currentChat?.owner?.kind === "orchestrated-team"
 		|| String(currentChat?.teamId || "").trim(),
 	);
@@ -84,8 +86,12 @@ export const ContentBlock: React.FC<ContentBlockProps> = ({ node }) => {
 	const segments = node.segments;
 	const hasSpecialSegment = segments?.some((s) => s.kind !== "text");
 	const workspaceFileAgentKey = React.useMemo(
-		() => resolvePreferredAgentKey(state),
-		[state],
+		() => String(
+			surfaceContext
+				? surfaceContext.agentKey || ""
+				: resolvePreferredAgentKey(state),
+		).trim(),
+		[state, surfaceContext],
 	);
 	const handleWorkspaceFileLinkClick = React.useCallback(
 		(link: WorkspaceFileLink) => {
@@ -121,14 +127,14 @@ export const ContentBlock: React.FC<ContentBlockProps> = ({ node }) => {
 				version: 1,
 				kind: "resource",
 				agentKey: workspaceFileAgentKey,
-				chatId: state.chatId,
+				chatId,
 				file: link.href,
 				resourceTarget,
 				title: link.name,
 				toggle: true,
 			});
 		},
-		[openTarget, state.chatId, workspaceFileAgentKey],
+		[chatId, openTarget, workspaceFileAgentKey],
 	);
 
 	/* Simple case: no special segments, just markdown */
@@ -138,7 +144,7 @@ export const ContentBlock: React.FC<ContentBlockProps> = ({ node }) => {
 				<div className={markdownClassName}>
 					<MarkdownContent
 						content={streamingSafeText}
-						chatId={state.chatId}
+						chatId={chatId}
 						teamChat={teamChat}
 						onWorkspaceFileLinkClick={handleWorkspaceFileLinkClick}
 						onResourceFileLinkClick={handleResourceFileLinkClick}
@@ -161,7 +167,7 @@ export const ContentBlock: React.FC<ContentBlockProps> = ({ node }) => {
 						>
 							<MarkdownContent
 								content={segment.text || ""}
-								chatId={state.chatId}
+								chatId={chatId}
 								teamChat={teamChat}
 								onWorkspaceFileLinkClick={
 									handleWorkspaceFileLinkClick

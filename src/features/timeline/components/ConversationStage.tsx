@@ -18,6 +18,7 @@ import {
   TimelineRow,
   formatTimelineTime,
 } from "@/features/timeline/components/TimelineRow";
+import { TimelineRenderEntryView } from "@/features/timeline/components/TimelineRenderEntryView";
 import {
   buildTimelineDisplayItems,
   buildRunRenderEntries,
@@ -216,39 +217,6 @@ const TIMELINE_RUN_ITEMS_CLASS_NAME =
   "timeline-run-items tw:flex tw:flex-col tw:gap-[12px]";
 const TIMELINE_RUN_TIME_CLASS_NAME =
   "timeline-run-time tw:ml-auto tw:shrink-0 tw:pl-2 tw:text-[10px] tw:leading-none tw:text-ink-muted tw:tracking-[0.02em]";
-const TIMELINE_TASK_GROUP_CLASS_NAME =
-  "timeline-task-group tw:flex tw:flex-col tw:gap-2";
-const TIMELINE_TASK_GROUP_HEADER_CLASS_NAME =
-  "timeline-task-group-header tw:group tw:cursor-pointer tw:appearance-none tw:py-[5px]";
-const TIMELINE_TASK_GROUP_HEADER_EXPANDED_CLASS_NAME = "is-expanded";
-const TIMELINE_TASK_GROUP_AGENT_CLASS_NAME =
-  "timeline-task-group-agent tw:inline-flex tw:max-w-[160px] tw:shrink-0 tw:items-center tw:gap-[5px] tw:min-w-0";
-const TIMELINE_TASK_GROUP_AGENT_AVATAR_CLASS_NAME =
-  "timeline-task-group-agent-avatar tw:shrink-0";
-const TIMELINE_TASK_GROUP_AGENT_NAME_CLASS_NAME =
-  "timeline-task-group-agent-name tw:min-w-0 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap tw:text-xs tw:font-semibold";
-const TIMELINE_TASK_GROUP_TITLE_CLASS_NAME =
-  "timeline-task-group-title tw:min-w-0 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap tw:text-xs tw:font-semibold";
-const TIMELINE_TASK_GROUP_STATUS_BASE_CLASS_NAME =
-  "timeline-task-group-status tw:h-[7px] tw:w-[7px] tw:shrink-0 tw:rounded-full tw:bg-[color-mix(in_srgb,var(--ink-muted)_84%,transparent)]";
-const TIMELINE_TASK_GROUP_STATUS_CLASS_BY_STATUS: Record<string, string> = {
-  running:
-    "tw:animate-[timeline-task-status-flash_1s_infinite] tw:bg-accent-electric",
-  completed: "tw:bg-accent-lime",
-  success: "tw:bg-accent-lime",
-  failed: "tw:bg-accent-danger",
-  error: "tw:bg-accent-danger",
-  canceled: "tw:bg-accent-warn",
-};
-const TIMELINE_TASK_GROUP_DURATION_CLASS_NAME =
-  "timeline-task-group-duration tw:shrink-0 tw:text-[11px] tw:leading-none tw:text-ink-muted";
-const TIMELINE_TASK_GROUP_ICON_CLASS_NAME =
-  "tw:shrink-0 tw:text-lg tw:opacity-0 tw:group-hover:opacity-100";
-const TIMELINE_TASK_GROUP_ICON_EXPANDED_CLASS_NAME = "tw:opacity-100";
-const TIMELINE_TASK_GROUP_ERROR_CLASS_NAME =
-  "timeline-task-group-error tw:ml-[34px] tw:break-words tw:text-xs tw:leading-[1.45] tw:text-[color-mix(in_srgb,var(--accent-danger)_82%,var(--ink-1))]";
-const TIMELINE_TASK_GROUP_BODY_CLASS_NAME =
-  "timeline-task-group-body tw:flex tw:flex-col tw:gap-2";
 
 export interface TimelineAgentOption {
   key: string;
@@ -484,42 +452,6 @@ export function dispatchTimelineAgentSwitch(option: TimelineAgentOption): void {
   const event = new Event("agent:select-worker") as CustomEvent<typeof detail>;
   Object.defineProperty(event, "detail", { value: detail });
   window.dispatchEvent(event);
-}
-
-function formatTaskStatus(
-  status: string,
-  t: (key: string, params?: Record<string, unknown>) => string,
-): string {
-  switch (status) {
-    case "running":
-      return t("timeline.taskStatus.running");
-    case "completed":
-      return t("timeline.taskStatus.completed");
-    case "failed":
-      return t("timeline.taskStatus.failed");
-    case "canceled":
-      return t("timeline.taskStatus.canceled");
-    default:
-      return status || t("timeline.taskStatus.default");
-  }
-}
-
-function resolveTaskGroupAgent(
-  entry: Extract<TimelineRenderEntry, { kind: "task-group" }>,
-  agents: Agent[],
-  currentWorker: ReturnType<typeof resolveCurrentWorkerSummary>,
-): Agent | null {
-  const fallbackAgentKey =
-    currentWorker?.type === "agent" ? currentWorker.sourceId : "";
-  const agentKey = String(entry.subAgentKey || fallbackAgentKey || "").trim();
-  if (!agentKey) return null;
-
-  return (
-    agents.find((agent) => String(agent?.key || "").trim() === agentKey) || {
-      key: agentKey,
-      name: agentKey,
-    }
-  );
 }
 
 const RunElapsedTime: React.FC<{ startTimeMs: number | null }> = ({
@@ -1499,109 +1431,22 @@ export const ConversationStage: React.FC<ConversationStageProps> = ({
   }, []);
 
   const renderEntry = useCallback(
-    (entry: TimelineRenderEntry) => {
-      if (entry.kind === "node") {
-        if (entry.node.kind === "agent-group") return null;
-        return <TimelineRow key={entry.key} node={entry.node} />;
-      }
-      if (entry.kind === "task-group") {
-        const expanded = Boolean(expandedTaskGroups[entry.key]);
-        const taskDuration = formatResponseDuration(entry.durationMs, t);
-        const statusText = formatTaskStatus(entry.status, t);
-        const taskAgent = resolveTaskGroupAgent(
-          entry,
-          state.agents,
-          currentWorker,
-        );
-        return (
-          <section key={entry.key} className={TIMELINE_TASK_GROUP_CLASS_NAME}>
-            <Flex
-              className={[
-                TIMELINE_TASK_GROUP_HEADER_CLASS_NAME,
-                expanded ? TIMELINE_TASK_GROUP_HEADER_EXPANDED_CLASS_NAME : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              align="center"
-              gap={8}
-              aria-expanded={expanded}
-              onClick={() => toggleTaskGroup(entry.key)}
-            >
-              {taskAgent && (
-                <span className={TIMELINE_TASK_GROUP_AGENT_CLASS_NAME}>
-                  <AgentIcon
-                    icon={taskAgent.icon}
-                    type="agent"
-                    props={{
-                      icon: {
-                        className: TIMELINE_TASK_GROUP_AGENT_AVATAR_CLASS_NAME,
-                        width: 20,
-                        height: 20,
-                      },
-                      avatar: {
-                        className: TIMELINE_TASK_GROUP_AGENT_AVATAR_CLASS_NAME,
-                        size: 20,
-                      },
-                    }}
-                  />
-                  <span className={TIMELINE_TASK_GROUP_AGENT_NAME_CLASS_NAME}>
-                    {taskAgent.name || taskAgent.key}
-                  </span>
-                </span>
-              )}
-              <span className={TIMELINE_TASK_GROUP_TITLE_CLASS_NAME}>
-                {entry.taskName || entry.taskId}
-              </span>
-              <span
-                className={[
-                  TIMELINE_TASK_GROUP_STATUS_BASE_CLASS_NAME,
-                  TIMELINE_TASK_GROUP_STATUS_CLASS_BY_STATUS[
-                    entry.status || "unknown"
-                  ] || "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                aria-label={statusText}
-                title={statusText}
-              />
-              {taskDuration && (
-                <span className={TIMELINE_TASK_GROUP_DURATION_CLASS_NAME}>
-                  {taskDuration}
-                </span>
-              )}
-              <MaterialIcon
-                className={[
-                  TIMELINE_TASK_GROUP_ICON_CLASS_NAME,
-                  expanded ? TIMELINE_TASK_GROUP_ICON_EXPANDED_CLASS_NAME : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                name={expanded ? "expand_more" : "chevron_right"}
-              />
-            </Flex>
-            {entry.error && (
-              <div className={TIMELINE_TASK_GROUP_ERROR_CLASS_NAME}>
-                {entry.error}
-              </div>
-            )}
-            {expanded && (
-              <div className={TIMELINE_TASK_GROUP_BODY_CLASS_NAME}>
-                {entry.renderEntries.map((childEntry) =>
-                  renderEntry(childEntry),
-                )}
-              </div>
-            )}
-          </section>
-        );
-      }
-      return <TimelineRow key={entry.key} toolGroup={entry} />;
-    },
+    (entry: TimelineRenderEntry) => (
+      <TimelineRenderEntryView
+        key={entry.key}
+        entry={entry}
+        agents={state.agents}
+        fallbackAgentKey={
+          currentWorker?.type === "agent" ? currentWorker.sourceId : ""
+        }
+        expandedTaskGroups={expandedTaskGroups}
+        onToggleTaskGroup={toggleTaskGroup}
+      />
+    ),
     [
       currentWorker,
       expandedTaskGroups,
-      isMainChatRunning,
       state.agents,
-      t,
       toggleTaskGroup,
     ],
   );

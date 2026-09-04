@@ -137,7 +137,7 @@ describe("automation command overlays", () => {
     expect(props.embedded).toBe(true);
     expect(props.onClose).toEqual(expect.any(Function));
 
-    props.onNavigateAway();
-    expect(onClose).toHaveBeenCalledWith(false);
+    expect(props.onNavigateAway).toBeUndefined();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,7 @@ import { UiButton } from "@/shared/ui/UiButton";
 import { t as runtimeT, useI18n, type Locale } from "@/shared/i18n";
 import { PlanningTimeline } from "./planning";
 import { useOpenTarget } from "@/features/surfaces/openTarget";
+import { useTimelineInteraction } from "./TimelineInteractionContext";
 
 type ToolGroupRenderEntry = Extract<
   TimelineRenderEntry,
@@ -253,6 +254,8 @@ export const TimelineRow: React.FC<TimelineRowProps> = ({
 }) => {
   const { locale, t } = useI18n();
   const openTarget = useOpenTarget();
+  const interaction = useTimelineInteraction();
+  const surfaceContext = interaction?.surfaceContext;
   const timeTarget = node || toolGroup?.nodes[toolGroup.nodes.length - 1];
   if (!timeTarget) return null;
   const taskID =
@@ -323,6 +326,7 @@ export const TimelineRow: React.FC<TimelineRowProps> = ({
                       t,
                       hasMultipleAttachments,
                     )}
+                    surfaceContext={surfaceContext}
                   />
                 ),
               )}

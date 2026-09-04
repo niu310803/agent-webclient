@@ -101,7 +101,6 @@ export const CommandModal: React.FC<CommandModalProps> = ({
             teams={state.teams}
             embedded
             onClose={() => closeModal()}
-            onNavigateAway={() => closeModal(false)}
           />
         )}
 

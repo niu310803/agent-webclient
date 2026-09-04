@@ -7,7 +7,6 @@ import React, {
 } from "react";
 import { Drawer, Dropdown, Input, Modal, Spin, Tooltip, message } from "antd";
 import type { MenuProps } from "antd";
-import { useLocation, useNavigate } from "react-router-dom";
 import type { Agent, Team } from "@/app/state/types";
 import { useAppDispatch, useAppState } from "@/app/state/AppContext";
 import {
@@ -21,14 +20,12 @@ import {
   createAutomation,
   deleteAutomation,
   getAutomation,
-  getAutomationExecution,
   getAutomationExecutions,
   getAutomations,
   triggerAutomation,
   toggleAutomation,
 } from "@/shared/data";
 import type {
-  AutomationExecutionDetailResponse,
   AutomationExecutionHistoryStatus,
   AutomationExecutionResponse,
   AutomationExecutionStatus,
@@ -48,14 +45,10 @@ import { MaterialIcon, type MaterialIconName } from "@/shared/ui/MaterialIcon";
 import { AgentIcon } from "@/shared/icons/agent";
 import { UiButton } from "@/shared/ui/UiButton";
 import { UiTag } from "@/shared/ui/UiTag";
-import { MarkdownContent } from "@/shared/ui/MarkdownContent";
 import { ModalTitleBar } from "@/shared/ui/ModalTitleBar";
 import { useI18n } from "@/shared/i18n";
 import { copyText } from "@/shared/utils/copy";
-import {
-  buildSurfaceRoute,
-  readSurfacePresentationContext,
-} from "@/features/surfaces/surfaceRoutes";
+import { AutomationExecutionDrawer } from "@/features/automations/components/AutomationExecutionDrawer";
 import styles from "./AutomationHistoryConsole.module.css";
 
 const EXECUTION_PAGE_SIZE = 20;
@@ -177,156 +170,6 @@ function AutomationEditorDrawer({
   );
 }
 
-function AutomationResultDrawer({
-  execution,
-  detail,
-  loading,
-  error,
-  onClose,
-  onOpenConversation,
-  onRetryDetail,
-}: {
-  execution: AutomationExecutionResponse | null;
-  detail: AutomationExecutionDetailResponse | null;
-  loading: boolean;
-  error: string;
-  onClose: () => void;
-  onOpenConversation: (item: AutomationExecutionResponse) => void;
-  onRetryDetail: () => void;
-}) {
-  const { locale, t } = useI18n();
-  const visible = detail || execution;
-  const canOpenConversation = Boolean(
-    visible?.chatId && (visible.agentKey || visible.teamId),
-  );
-  const copy = async (value: string) => {
-    await copyText(value);
-    message.success(t("automationHistory.message.copied"));
-  };
-
-  return (
-    <Drawer
-      open={Boolean(execution)}
-      onClose={onClose}
-      destroyOnHidden
-      placement="right"
-      width="min(680px, 100vw)"
-      className={styles.resultDrawer}
-      title={t("automationHistory.result.title")}
-      closable={{ closeIcon: <MaterialIcon name="chevron_right" /> }}
-      styles={{
-        header: { borderBottom: 0, padding: "10px 12px" },
-        body: { padding: "0 16px 20px" },
-      }}
-    >
-      <Spin spinning={loading}>
-        {error ? (
-          <div className={styles.drawerError}>
-            <MaterialIcon name="error" />
-            <span>{error}</span>
-            <UiButton size="sm" variant="ghost" onClick={onRetryDetail}>
-              <MaterialIcon name="refresh" />
-              {t("automationConsole.action.retry")}
-            </UiButton>
-          </div>
-        ) : visible ? (
-          <div className={styles.resultDrawerContent}>
-            <div className={styles.drawerKicker}>
-              <span className={`${styles.status} ${styles[visible.status]}`}>
-                <MaterialIcon name={STATUS_ICON[visible.status]} />
-                {t(`automationHistory.status.${visible.status}`)}
-              </span>
-              <span>{automationExecutionDateTimeLabel(visible, locale)}</span>
-              <span>·</span>
-              <span>{automationExecutionDurationLabel(visible.durationMs)}</span>
-            </div>
-
-            <div className={styles.drawerActions}>
-              {detail?.resultContent ? (
-                <UiButton
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => void copy(detail.resultContent)}
-                >
-                  <MaterialIcon name="content_copy" />
-                  {t("automationHistory.action.copyResult")}
-                </UiButton>
-              ) : null}
-              {canOpenConversation ? (
-                <UiButton
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onOpenConversation(visible)}
-                >
-                  <MaterialIcon name="open_in_new" />
-                  {t("automationHistory.action.openConversation")}
-                </UiButton>
-              ) : null}
-            </div>
-
-            <section className={styles.resultSection}>
-              <h3>{t("automationHistory.result.assistantOutput")}</h3>
-              {detail?.resultContent ? (
-                <div className={styles.markdownResult}>
-                  <MarkdownContent
-                    content={detail.resultContent}
-                    chatId={detail.chatId || ""}
-                    teamChat={Boolean(detail.teamId)}
-                  />
-                </div>
-              ) : (
-                <div className={styles.resultEmpty}>
-                  {t("automationHistory.result.empty")}
-                </div>
-              )}
-            </section>
-
-            <dl className={styles.resultMeta}>
-              <div>
-                <dt>{t("automationHistory.field.executionId")}</dt>
-                <dd>
-                  <button type="button" onClick={() => void copy(visible.id)}>
-                    {visible.id}
-                    <MaterialIcon name="content_copy" />
-                  </button>
-                </dd>
-              </div>
-              {visible.runId ? (
-                <div>
-                  <dt>{t("automationHistory.field.runId")}</dt>
-                  <dd>
-                    <button type="button" onClick={() => void copy(visible.runId || "")}>
-                      {visible.runId}
-                      <MaterialIcon name="content_copy" />
-                    </button>
-                  </dd>
-                </div>
-              ) : null}
-              <div>
-                <dt>{t("automationHistory.field.finishReason")}</dt>
-                <dd>{visible.finishReason || "--"}</dd>
-              </div>
-              {visible.error ? (
-                <div>
-                  <dt>{t("automationHistory.result.error")}</dt>
-                  <dd>{visible.error}</dd>
-                </div>
-              ) : null}
-            </dl>
-
-            {detail?.queryContent ? (
-              <details className={styles.queryDetails}>
-                <summary>{t("automationHistory.result.queryContent")}</summary>
-                <pre>{detail.queryContent}</pre>
-              </details>
-            ) : null}
-          </div>
-        ) : null}
-      </Spin>
-    </Drawer>
-  );
-}
-
 export interface AutomationHistoryConsoleProps {
   currentWorker: CurrentWorkerSummary | null;
   agents: Agent[];
@@ -334,7 +177,6 @@ export interface AutomationHistoryConsoleProps {
   embedded?: boolean;
   onClose?: () => void;
   titleBarVariant?: "default" | "drawer";
-  onNavigateAway?: () => void;
 }
 
 export function AutomationHistoryConsole({
@@ -344,13 +186,10 @@ export function AutomationHistoryConsole({
   embedded = false,
   onClose,
   titleBarVariant = "default",
-  onNavigateAway,
 }: AutomationHistoryConsoleProps) {
   const { locale, t } = useI18n();
   const state = useAppState();
   const dispatch = useAppDispatch();
-  const navigate = useNavigate();
-  const location = useLocation();
   const push = usePushTransport();
   const automations = state.automations;
   const [selectedId, setSelectedId] = useState("");
@@ -370,18 +209,17 @@ export function AutomationHistoryConsole({
   );
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorAutomationId, setEditorAutomationId] = useState("");
-  const [resultExecution, setResultExecution] =
+  const [viewerExecution, setViewerExecution] =
     useState<AutomationExecutionResponse | null>(null);
-  const [resultDetail, setResultDetail] =
-    useState<AutomationExecutionDetailResponse | null>(null);
-  const [resultLoading, setResultLoading] = useState(false);
-  const [resultError, setResultError] = useState("");
+  const [viewerRefreshRevision, setViewerRefreshRevision] = useState(0);
   const selectedIdRef = useRef(selectedId);
   const executionsRef = useRef<AutomationExecutionResponse[]>(executions);
+  const viewerExecutionRef = useRef<AutomationExecutionResponse | null>(null);
+  const viewerTriggerRef = useRef<HTMLElement | null>(null);
   const listRequestRef = useRef(0);
   const executionRequestRef = useRef(0);
-  const detailRequestRef = useRef(0);
   const pushTimerRef = useRef<number | null>(null);
+  const viewerPushTimerRef = useRef<number | null>(null);
   const triggeringIdsRef = useRef<Set<string>>(new Set());
 
   const effectiveAgents = agents.length ? agents : state.agents;
@@ -435,6 +273,10 @@ export function AutomationHistoryConsole({
   useEffect(() => {
     executionsRef.current = executions;
   }, [executions]);
+
+  useEffect(() => {
+    viewerExecutionRef.current = viewerExecution;
+  }, [viewerExecution]);
 
   const loadExecutions = useCallback(
     async (automationId: string, replace: boolean, silent = false) => {
@@ -565,6 +407,9 @@ export function AutomationHistoryConsole({
       (frame) => {
         const payload = readPushPayload(frame);
         const automationId = String(payload.automationId || "").trim();
+        const executionId = String(
+          payload.executionId || payload.id || "",
+        ).trim();
         if (pushTimerRef.current !== null) window.clearTimeout(pushTimerRef.current);
         pushTimerRef.current = window.setTimeout(() => {
           pushTimerRef.current = null;
@@ -573,11 +418,28 @@ export function AutomationHistoryConsole({
             loadHistory: automationId === selectedIdRef.current,
           });
         }, EXECUTION_PUSH_DEBOUNCE_MS);
+        if (
+          executionId &&
+          executionId === viewerExecutionRef.current?.id
+        ) {
+          if (viewerPushTimerRef.current !== null) {
+            window.clearTimeout(viewerPushTimerRef.current);
+          }
+          viewerPushTimerRef.current = window.setTimeout(() => {
+            viewerPushTimerRef.current = null;
+            if (executionId === viewerExecutionRef.current?.id) {
+              setViewerRefreshRevision((revision) => revision + 1);
+            }
+          }, EXECUTION_PUSH_DEBOUNCE_MS);
+        }
       },
     );
     return () => {
       unsubscribe();
       if (pushTimerRef.current !== null) window.clearTimeout(pushTimerRef.current);
+      if (viewerPushTimerRef.current !== null) {
+        window.clearTimeout(viewerPushTimerRef.current);
+      }
     };
   }, [loadAutomationList, push]);
 
@@ -693,48 +555,6 @@ export function AutomationHistoryConsole({
       triggeringIdsRef.current.delete(item.id);
       setTriggeringIds(new Set(triggeringIdsRef.current));
     }
-  };
-
-  const loadExecutionDetail = useCallback(async (item: AutomationExecutionResponse) => {
-    const request = detailRequestRef.current + 1;
-    detailRequestRef.current = request;
-    setResultExecution(item);
-    setResultDetail(null);
-    setResultLoading(true);
-    setResultError("");
-    try {
-      const response = await getAutomationExecution({ executionId: item.id });
-      if (request === detailRequestRef.current) setResultDetail(response.data);
-    } catch (error) {
-      if (request === detailRequestRef.current) {
-        setResultError(error instanceof Error ? error.message : String(error));
-      }
-    } finally {
-      if (request === detailRequestRef.current) setResultLoading(false);
-    }
-  }, []);
-
-  const openConversation = (item: AutomationExecutionResponse) => {
-    if (!item.chatId) return;
-    if (item.agentKey) {
-      navigate(
-        buildSurfaceRoute(
-          { kind: "agent", agentKey: item.agentKey, chatId: item.chatId },
-          readSurfacePresentationContext(location.search),
-        ),
-      );
-      onNavigateAway?.();
-      return;
-    }
-    navigate("/", {
-      state: {
-        automationConversation: {
-          chatId: item.chatId,
-          teamId: item.teamId,
-        },
-      },
-    });
-    onNavigateAway?.();
   };
 
   const selectedTriggering = selected
@@ -1100,19 +920,21 @@ export function AutomationHistoryConsole({
                                       <span>{item.finishReason || "--"}</span>
                                     </div>
                                     {item.error ? <p className={styles.executionInlineError}>{item.error}</p> : null}
-                                    <div className={styles.executionActions}>
-                                      {item.hasResult ? (
-                                        <button type="button" onClick={() => void loadExecutionDetail(item)}>
-                                          {t("automationHistory.action.viewResult")}
+                                    {item.hasResult || Boolean(String(item.chatId || "").trim()) ? (
+                                      <div className={styles.executionActions}>
+                                        <button
+                                          type="button"
+                                          aria-label={t("automationHistory.action.view")}
+                                          onClick={(event) => {
+                                            viewerTriggerRef.current = event.currentTarget;
+                                            viewerExecutionRef.current = item;
+                                            setViewerExecution(item);
+                                          }}
+                                        >
+                                          {t("automationHistory.action.view")}
                                         </button>
-                                      ) : null}
-                                      {item.chatId && (item.agentKey || item.teamId) ? (
-                                        <button type="button" onClick={() => openConversation(item)}>
-                                          {t("automationHistory.action.openConversation")}
-                                          <MaterialIcon name="open_in_new" />
-                                        </button>
-                                      ) : null}
-                                    </div>
+                                      </div>
+                                    ) : null}
                                   </div>
                                 ) : null}
                               </article>
@@ -1173,20 +995,19 @@ export function AutomationHistoryConsole({
           void loadAutomationList();
         }}
       />
-      <AutomationResultDrawer
-        execution={resultExecution}
-        detail={resultDetail}
-        loading={resultLoading}
-        error={resultError}
+      <AutomationExecutionDrawer
+        execution={viewerExecution}
+        agents={effectiveAgents}
+        teams={effectiveTeams}
+        refreshRevision={viewerRefreshRevision}
+        returnFocusRef={viewerTriggerRef}
         onClose={() => {
-          detailRequestRef.current += 1;
-          setResultExecution(null);
-          setResultDetail(null);
-          setResultError("");
-        }}
-        onOpenConversation={openConversation}
-        onRetryDetail={() => {
-          if (resultExecution) void loadExecutionDetail(resultExecution);
+          if (viewerPushTimerRef.current !== null) {
+            window.clearTimeout(viewerPushTimerRef.current);
+            viewerPushTimerRef.current = null;
+          }
+          viewerExecutionRef.current = null;
+          setViewerExecution(null);
         }}
       />
       </div>

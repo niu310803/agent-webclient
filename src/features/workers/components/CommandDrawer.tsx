@@ -259,7 +259,6 @@ export const CommandDrawer: React.FC<CommandDrawerProps> = ({
             embedded
             onClose={() => closeDrawer()}
             titleBarVariant="drawer"
-            onNavigateAway={() => closeDrawer(false)}
           />
         )}
 
