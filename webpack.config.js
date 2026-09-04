@@ -297,7 +297,7 @@ module.exports = (env, argv) => {
         return middlewares;
       },
     },
-    devtool: isProd ? 'source-map' : 'eval-cheap-module-source-map',
+    devtool: isProd ? false : 'eval-cheap-module-source-map',
     performance: {
       hints: isProd ? 'warning' : false,
     },
