@@ -110,8 +110,8 @@ export interface AdminSkillPackageSummary {
   meta?: Record<string, unknown>;
   version?: string;
   sha256?: string;
-  /** Members are scanned by Platform; id is the full package/skill key. */
-  skills: Array<{ id: string; name?: string; displayName?: string; description?: string; version?: string }>;
+  /** Manifest-declared members; SKILL.md supplies display details. id remains the full package/skill key. */
+  skills: Array<{ id: string; key?: string; name?: string; displayName?: string; description?: string; version?: string }>;
   installedAt?: number;
 }
 

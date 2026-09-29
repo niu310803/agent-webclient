@@ -4,8 +4,8 @@ import type {
 export const zhCNMessages = {
   "skillCatalog.kindFilter": "技能类型筛选",
   "skillPackageEditor.editManifest": "编辑 package.json",
-  "skillPackageEditor.manifestHint": "编辑技能包自身信息。name 不可修改；成员从包内技能目录自动读取，无需填写 skills。",
-  "skillPackageEditor.manifestInvalid": "请保留原 name，且不要在 package.json 中填写 skills 成员清单。",
+  "skillPackageEditor.manifestHint": "编辑技能包信息与必填的 skills 数组（空包填写 []）。每个成员填写子目录 key，展示详情来自该目录的 SKILL.md；name 不可修改。",
+  "skillPackageEditor.manifestInvalid": "请保留原 name 并填写 skills 数组。每个成员必须是包含非空、单段子目录 key 的对象，key 不可重复（忽略大小写）。",
   "skillPackageEditor.discard": "放弃修改",
   "skillPackageEditor.discardHint": "关闭后未保存的 package.json 修改将丢失。",
   "skillPackageEditor.summary": "{id} · v{version} · {count} 个技能",
